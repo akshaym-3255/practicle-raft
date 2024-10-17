@@ -1,4 +1,4 @@
-package main
+package transport
 
 import (
 	"bytes"
@@ -10,45 +10,45 @@ import (
 	"strings"
 	"sync"
 
-	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/raft/v3/raftpb"
 )
 
-type httpTransport struct {
+type HttpTransport struct {
 	id      uint64
 	peers   []string
 	client  *http.Client
 	peerMap map[string]uint64
-	recvC   chan raftpb.Message
+	RecvC   chan raftpb.Message
 	mu      sync.Mutex
 }
 
-func newHTTPTransport(id uint64, peers []string) *httpTransport {
+func NewHTTPTransport(id uint64, peers []string) *HttpTransport {
 	peerMap := make(map[string]uint64)
 	for _, peer := range peers {
 		idHost := strings.Split(peer, "=")
 		id, _ := strconv.ParseInt(idHost[0], 10, 64)
 		peerMap[idHost[1]] = uint64(id)
 	}
-	return &httpTransport{
+	return &HttpTransport{
 		id:      id,
 		peers:   peers,
 		client:  &http.Client{},
 		peerMap: peerMap,
-		recvC:   make(chan raftpb.Message, 1024),
+		RecvC:   make(chan raftpb.Message, 1024),
 	}
 }
 
-func (t *httpTransport) send(messages []raftpb.Message) {
+func (t *HttpTransport) Send(messages []raftpb.Message) {
 	for _, msg := range messages {
 		if msg.To == t.id {
-			t.recvC <- msg
+			t.RecvC <- msg
 		} else {
-			t.sendMessage(msg)
+			t.SendMessage(msg)
 		}
 	}
 }
 
-func (t *httpTransport) sendMessage(msg raftpb.Message) {
+func (t *HttpTransport) SendMessage(msg raftpb.Message) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	data, err := msg.Marshal()
@@ -73,7 +73,7 @@ func (t *httpTransport) sendMessage(msg raftpb.Message) {
 	}
 }
 
-func (t *httpTransport) getPeerURL(id uint64) string {
+func (t *HttpTransport) getPeerURL(id uint64) string {
 	for peer, peerID := range t.peerMap {
 		if peerID == id {
 			return peer
@@ -82,7 +82,7 @@ func (t *httpTransport) getPeerURL(id uint64) string {
 	return ""
 }
 
-func (t *httpTransport) receive(w http.ResponseWriter, r *http.Request) {
+func (t *HttpTransport) Receive(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -94,6 +94,6 @@ func (t *httpTransport) receive(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	t.recvC <- msg
+	t.RecvC <- msg
 	w.WriteHeader(http.StatusOK)
 }
