@@ -4,11 +4,14 @@ import (
 	"akshay-raft/raftnode"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type ApiServer struct {
@@ -23,6 +26,7 @@ func (as *ApiServer) ServeHTTP(clientListenURL string) {
 	r := mux.NewRouter()
 	r.HandleFunc("/kv/{key}", as.handleGet).Methods("GET")
 	r.HandleFunc("/kv/{key}", as.handleSet).Methods("PUT")
+	r.HandleFunc("/add-node", as.addNodeHandler).Methods("POST")
 
 	clientAddr := stripHTTPPrefix(clientListenURL)
 	log.Printf("Starting client HTTP server on %s", clientAddr)
@@ -57,11 +61,48 @@ func (as *ApiServer) handleSet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Propose the data using the context
 	fmt.Println("Proposing data")
-	err = as.RaftNode.Node.Propose(context.TODO(), data)
+	err = as.RaftNode.Node.Propose(ctx, data)
 	if err != nil {
-		fmt.Println(err)
+		// Handle timeout or other errors from Propose
+		if errors.Is(err, context.DeadlineExceeded) {
+			fmt.Println("Propose operation timed out")
+			http.Error(w, "Propose operation timed out", http.StatusRequestTimeout)
+		} else {
+			fmt.Println("Propose operation failed:", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
+
+	// If Propose succeeds, respond with no content
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (api *ApiServer) addNodeHandler(w http.ResponseWriter, r *http.Request) {
+	nodeIDStr := r.URL.Query().Get("node_id")
+	nodeID, err := strconv.ParseUint(nodeIDStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid node ID", http.StatusBadRequest)
+		return
+	}
+
+	nodeURL := r.URL.Query().Get("node_url")
+	if nodeURL == "" {
+		http.Error(w, "Missing node URL", http.StatusBadRequest)
+		return
+	}
+
+	err = api.RaftNode.AddNode(nodeID, nodeURL)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Fprintf(w, "Node %d added successfully", nodeID)
 }

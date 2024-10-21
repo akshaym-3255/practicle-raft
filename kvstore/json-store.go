@@ -16,9 +16,9 @@ func NewJsonStore(filePath string) *JsonStore {
 }
 
 func (js *JsonStore) Set(key, value string) error {
-	fmt.Println("Setting key value pair in kvstore")
-	inputFile, err := os.Open(js.filePath)
+	inputFile, err := os.OpenFile(js.filePath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
+		fmt.Println(err)
 		return fmt.Errorf("error opening file: %v", err)
 	}
 
@@ -30,6 +30,10 @@ func (js *JsonStore) Set(key, value string) error {
 	}(inputFile)
 
 	byteValue, _ := io.ReadAll(inputFile)
+	if len(byteValue) == 0 {
+		byteValue = []byte("{}")
+
+	}
 	var data map[string]string
 	err = json.Unmarshal(byteValue, &data)
 	if err != nil {
@@ -47,7 +51,6 @@ func (js *JsonStore) Set(key, value string) error {
 
 	// Write the updated map to a new JSON file
 	err = os.WriteFile(js.filePath, output, 0644)
-	fmt.Println("successfully written to file")
 	if err != nil {
 		fmt.Println("Error writing file:", err)
 		return err
@@ -78,4 +81,44 @@ func (js *JsonStore) Get(key string) (string, bool) {
 	}
 
 	return data[key], true
+}
+
+func (js *JsonStore) Dump() map[string]string {
+	inputFile, err := os.Open(js.filePath)
+
+	if err != nil {
+		return nil
+	}
+
+	defer func(inputFile *os.File) {
+		err := inputFile.Close()
+		if err != nil {
+			fmt.Println("Error closing file:", err)
+		}
+	}(inputFile)
+
+	byteValue, _ := io.ReadAll(inputFile)
+	var data map[string]string
+	err = json.Unmarshal(byteValue, &data)
+	if err != nil {
+		fmt.Println("Error unmarshalling JSON:", err)
+		return nil
+	}
+
+	return data
+}
+
+func (js *JsonStore) Restore(data map[string]string) error {
+	output, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		fmt.Println("Error marshalling JSON:", err)
+		return err
+	}
+
+	err = os.WriteFile(js.filePath, output, 0644)
+	if err != nil {
+		fmt.Println("Error writing file:", err)
+		return err
+	}
+	return nil
 }

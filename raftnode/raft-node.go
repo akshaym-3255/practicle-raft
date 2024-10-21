@@ -3,13 +3,13 @@ package raftnode
 import (
 	"akshay-raft/kvstore"
 	"akshay-raft/transport"
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,19 +18,21 @@ import (
 )
 
 type RaftNode struct {
-	id          uint64
-	Node        raft.Node
-	storage     *raft.MemoryStorage
-	Transport   *transport.HttpTransport
-	KvStore     kvstore.KeyValueStore
-	stopc       chan struct{}
-	httpServer  *http.Server
-	snapshotDir string
-	logDir      string
+	id                uint64
+	Node              raft.Node
+	storage           *raft.MemoryStorage
+	Transport         *transport.HttpTransport
+	KvStore           kvstore.KeyValueStore
+	ConfState         raftpb.ConfState
+	stopc             chan struct{}
+	httpServer        *http.Server
+	snapshotDir       string
+	logDir            string
+	lastSnapshotIndex uint64
 }
 
-func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster string, snapshotDir, logDir string) *RaftNode {
-	snapshot, err := loadSnapshot(snapshotDir)
+func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster string, snapshotDir, logDir string, join bool) *RaftNode {
+	snapshot, err := loadSnapshot(snapshotDir, kvStore)
 	if err != nil {
 		log.Fatalf("Error loading snapshot: %v", err)
 	}
@@ -38,11 +40,15 @@ func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster strin
 	// Create a storage for the Raft log and apply snapshot if found
 	storage := raft.NewMemoryStorage()
 
+	var lastSnapshotIndex uint64
+	var confState raftpb.ConfState
 	// Recovering the node by loading snapshot if exists
 	if snapshot != nil {
 		if err := storage.ApplySnapshot(*snapshot); err != nil {
 			log.Fatalf("Error applying snapshot: %v", err)
 		}
+		confState = snapshot.Metadata.ConfState
+		lastSnapshotIndex = snapshot.Metadata.Index
 	}
 
 	// Recovering the node's logs from the log directory
@@ -66,19 +72,27 @@ func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster strin
 		raftPeers = append(raftPeers, raft.Peer{ID: uint64(i + 1)})
 	}
 
-	n := raft.StartNode(c, raftPeers)
+	var n raft.Node
+	if join {
+		n = raft.RestartNode(c)
+	} else {
+		n = raft.StartNode(c, raftPeers)
+	}
+
 	tp := transport.NewHTTPTransport(id, peerURLs)
 
 	rn := &RaftNode{
-		id:          id,
-		Node:        n,
-		storage:     storage,
-		Transport:   tp,
-		KvStore:     *kvStore,
-		stopc:       make(chan struct{}),
-		snapshotDir: snapshotDir,
-		logDir:      logDir,
+		id:                id,
+		Node:              n,
+		storage:           storage,
+		Transport:         tp,
+		KvStore:           *kvStore,
+		stopc:             make(chan struct{}),
+		snapshotDir:       snapshotDir,
+		logDir:            logDir,
+		lastSnapshotIndex: lastSnapshotIndex,
 	}
+	rn.ConfState = confState
 	return rn
 }
 
@@ -90,19 +104,17 @@ func (rn *RaftNode) Run() {
 		case <-rn.stopc:
 			return
 		case rd := <-rn.Node.Ready():
+
 			if err := rn.storage.Append(rd.Entries); err != nil {
 				log.Fatal(err)
 			}
 			rn.Transport.Send(rd.Messages)
-			//fmt.Println(len(rd.CommittedEntries))
 			if len(rd.CommittedEntries) > 0 {
-				rn.maybeTriggerSnapshot(rd.CommittedEntries[len(rd.CommittedEntries)-1].Index, 0)
+				rn.maybeTriggerSnapshot(rd.CommittedEntries[len(rd.CommittedEntries)-1].Index)
 			}
 
 			rn.appendToLog(rd.Entries)
-			//if err := rn.saveSnapshot(rd.Snapshot); err != nil {
-			//	log.Fatalf("Error saving snapshot: %v", err)
-			//}
+
 			for _, entry := range rd.CommittedEntries {
 				if entry.Type == raftpb.EntryNormal && len(entry.Data) > 0 {
 					var cmd map[string]string
@@ -111,6 +123,15 @@ func (rn *RaftNode) Run() {
 							rn.KvStore.Set(k, v)
 						}
 					}
+				}
+
+				if entry.Type == raftpb.EntryConfChange {
+					var cc raftpb.ConfChange
+					if err := cc.Unmarshal(entry.Data); err != nil {
+						log.Fatalf("failed to unmarshal conf change: %v", err)
+					}
+					rn.ConfState = *rn.Node.ApplyConfChange(cc)
+					rn.Transport.AddPeer(cc.NodeID, string(cc.Context))
 				}
 			}
 			rn.Node.Advance()
@@ -125,161 +146,129 @@ func (rn *RaftNode) Run() {
 	}
 }
 
-// Check if a snapshot needs to be triggered
-func (rn *RaftNode) maybeTriggerSnapshot(appliedIndex uint64, lastSnapshotIndex uint64) {
-	// Define when you want to take a snapshot, e.g., every 1000 log entries
-	snapshotThreshold := uint64(1000)
-	fmt.Println("appliedIndex", appliedIndex)
-	if appliedIndex-lastSnapshotIndex >= snapshotThreshold {
-		// Trigger a snapshot
+func (rn *RaftNode) maybeTriggerSnapshot(appliedIndex uint64) {
+	snapshotThreshold := uint64(10)
+	if appliedIndex-rn.lastSnapshotIndex >= snapshotThreshold {
 		log.Printf("Triggering snapshot at applied index: %d", appliedIndex)
 		rn.createSnapshot(appliedIndex)
-		lastSnapshotIndex = appliedIndex
+		rn.lastSnapshotIndex = appliedIndex
 	}
 }
 
-// Create a snapshot of the current state and persist it
 func (rn *RaftNode) createSnapshot(appliedIndex uint64) {
-	// The snapshot includes the index and the state of your application
+
+	kvStateSnapData, err := json.Marshal(rn.KvStore.Dump())
+
+	if err != nil {
+		log.Fatalf("Failed to serialize state for snapshot: %v", err)
+	}
+
 	snapshot := raftpb.Snapshot{
 		Metadata: raftpb.SnapshotMetadata{
-			Index: appliedIndex,
-			Term:  4, // The term at the time of the snapshot
+			Index:     appliedIndex,
+			Term:      rn.Node.Status().Term,
+			ConfState: rn.ConfState,
 		},
-		//Data: serializeStateMachineState(), // Serialize your application's state here
+		Data: kvStateSnapData,
 	}
 
-	// Save the snapshot to disk
-	if err := rn.saveSnapshot(snapshot); err != nil {
+	if err := saveSnapshot(rn.snapshotDir, snapshot); err != nil {
 		log.Fatalf("Failed to save snapshot: %v", err)
 	}
-
-	// Compact the log (i.e., discard entries up to the snapshot index)
-	//node.Compact(appliedIndex)
-}
-
-func loadSnapshot(dir string) (*raftpb.Snapshot, error) {
-	snapshotFiles, err := filepath.Glob(filepath.Join(dir, "*.snap"))
+	if err := rn.storage.Compact(appliedIndex); err != nil {
+		log.Fatalf("Failed to compact Raft logs: %v", err)
+	}
+	err = compactLogFile(rn.logDir, appliedIndex)
 	if err != nil {
-		return nil, err
+		log.Fatalf("Failed to compact node.log file: %v", err)
 	}
 
-	if len(snapshotFiles) == 0 {
-		log.Println("No snapshot found")
-		return nil, nil
-	}
-
-	// Load the latest snapshot
-	snapshotFile := snapshotFiles[len(snapshotFiles)-1]
-	snapshotData, err := os.ReadFile(snapshotFile)
-	if err != nil {
-		return nil, err
-	}
-
-	var snapshot raftpb.Snapshot
-	if err := snapshot.Unmarshal(snapshotData); err != nil {
-		return nil, err
-	}
-
-	log.Printf("Loaded snapshot: %s", snapshotFile)
-	return &snapshot, nil
-}
-
-// loadRaftLog loads the Raft logs from disk
-func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
-	logFiles, err := filepath.Glob(filepath.Join(dir, "*.log"))
-	if err != nil {
-		return err
-	}
-
-	fmt.Println(logFiles)
-	for _, logFile := range logFiles {
-		logData, err := os.ReadFile(logFile)
-		fmt.Println(string(logData))
-
-		if err != nil {
-			return err
-		}
-
-		var entry raftpb.Entry
-		if err := entry.Unmarshal(logData); err != nil {
-			return err
-		}
-
-		if err := storage.Append([]raftpb.Entry{entry}); err != nil {
-			return err
-		}
-		log.Printf("Loaded log entry: %s", logFile)
-	}
-
-	return nil
-}
-
-// Save the snapshot to disk
-func (rn *RaftNode) saveSnapshot(snapshot raftpb.Snapshot) error {
-	snapshotFile := filepath.Join(rn.snapshotDir, fmt.Sprintf("snapshot-%d.snap", snapshot.Metadata.Index))
-	data, err := snapshot.Marshal()
-	if err != nil {
-		return err
-	}
-
-	if err := os.WriteFile(snapshotFile, data, 0600); err != nil {
-		return err
-	}
-
-	log.Printf("Saved snapshot at index: %d", snapshot.Metadata.Index)
-	return nil
+	log.Printf("Snapshot created at index: %d, term: %d", snapshot.Metadata.Index, snapshot.Metadata.Term)
 }
 
 func (rn *RaftNode) appendToLog(entries []raftpb.Entry) {
 	for _, entry := range entries {
-		if entry.Type == raftpb.EntryNormal {
-			log.Printf("Received entry: %s", entry.Data)
-			err := rn.appendToLogFile(entry)
-			if err != nil {
-				return
-			}
+		err := appendToLogFile(rn.logDir, entry)
+		if err != nil {
+			return
 		}
-	}
 
+	}
 }
 
-// applyLogEntry applies a committed log entry to the state machine
-func (rn *RaftNode) appendToLogFile(entry raftpb.Entry) error {
-	// Open the file in append mode, create if it doesn't exist
-	file, err := os.OpenFile(rn.logDir+"/node.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+func (rn *RaftNode) AddNode(newNodeID uint64, newNodeURL string) error {
+	log.Printf("Adding new node with ID %d, URL: %s", newNodeID, newNodeURL)
+
+	cc := raftpb.ConfChange{
+		Type:    raftpb.ConfChangeAddNode,
+		NodeID:  newNodeID,
+		Context: []byte(newNodeURL),
+	}
+
+	err := rn.Node.ProposeConfChange(context.TODO(), cc)
 	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// Serialize the log entry to JSON
-	logEntry := map[string]interface{}{
-		"index": entry.Index,
-		"term":  entry.Term,
-		"type":  entry.Type.String(), // Convert the EntryType to a string
-		"data":  string(entry.Data),  // Assuming the data is a string, adjust for other formats
+		return fmt.Errorf("failed to propose conf change: %v", err)
 	}
 
-	// Convert the log entry to JSON format
-	jsonData, err := json.Marshal(logEntry)
-	if err != nil {
-		return err
-	}
+	rn.Transport.AddPeer(newNodeID, newNodeURL)
 
-	// Append the JSON data to the file, followed by a newline for separation
-	_, err = file.Write(append(jsonData, '\n'))
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Appended log entry: %v", logEntry)
+	log.Printf("Proposed configuration change to add node %d", newNodeID)
 	return nil
 }
 
-//func (rn *RaftNode) start(clientListenURL, peerListenURL string) {
-//
-//	go peerServer.ServeHTTP()
-//	go rn.serveHTTP(clientListenURL, peerListenURL)
-//	go rn.run()
-//}
+// compactLogFile removes log entries before the given appliedIndex from the log file
+func compactLogFile(logDir string, appliedIndex uint64) error {
+	// Open the log file
+	logFile, err := os.OpenFile(logDir+"/node.log", os.O_RDWR, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open log file for compaction: %v", err)
+	}
+	defer logFile.Close()
+
+	// Scanner for reading the log file line-by-line
+	scanner := bufio.NewScanner(logFile)
+	var newLogEntries []raftpb.Entry
+
+	for scanner.Scan() {
+		var logEntry map[string]interface{}
+		if err := json.Unmarshal(scanner.Bytes(), &logEntry); err != nil {
+			return fmt.Errorf("failed to unmarshal log entry from JSON in file %s: %w", logFile, err)
+		}
+
+		// Convert the JSON back into a raftpb.Entry
+		entry := raftpb.Entry{
+			Index: uint64(logEntry["index"].(float64)),                                 // Cast to uint64
+			Term:  uint64(logEntry["term"].(float64)),                                  // Cast to uint64
+			Type:  raftpb.EntryType(raftpb.EntryType_value[logEntry["type"].(string)]), // Convert string back to EntryType
+			Data:  []byte(logEntry["data"].(string)),                                   // Convert data back to bytes
+		}
+		// Only keep entries after or at the appliedIndex (since older entries are in the snapshot)
+		if entry.Index >= appliedIndex {
+			newLogEntries = append(newLogEntries, entry)
+		}
+	}
+
+	// Truncate and rewrite the log file with only the new entries
+	if err := logFile.Truncate(0); err != nil {
+		return fmt.Errorf("failed to truncate log file: %v", err)
+	}
+	if _, err := logFile.Seek(0, 0); err != nil {
+		return fmt.Errorf("failed to seek log file: %v", err)
+	}
+
+	writer := bufio.NewWriter(logFile)
+	for _, entry := range newLogEntries {
+		err = appendToLogFile(logDir, entry)
+		if err != nil {
+			return fmt.Errorf("failed to encode log entry: %v", err)
+		}
+	}
+
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("failed to flush buffer: %v", err)
+	}
+
+	log.Printf("Log file compacted, removed entries before index: %d", appliedIndex)
+	return nil
+
+}

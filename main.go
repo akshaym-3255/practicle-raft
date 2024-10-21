@@ -13,7 +13,8 @@ func main() {
 	id := flag.Uint64("id", 1, "node ID")
 	clientListenURLs := flag.String("listen-client-urls", "http://localhost:2379", "client listen URL")
 	peerListenURLs := flag.String("listen-peer-urls", "http://localhost:2380", "peer listen URL")
-	initialCluster := flag.String("initial-cluster", "1=http://localhost:2380,2=http://localhost:2382,3=http://localhost:2384", "initial cluster configuration")
+	initialCluster := flag.String("initial-cluster", "", "initial cluster configuration")
+	join := flag.Bool("join", false, "join an existing cluster")
 
 	snapshotDir := flag.String("snapshot-dir", "", "snapshot dir")
 	logDir := snapshotDir
@@ -27,7 +28,7 @@ func main() {
 	jsonStore := kvstore.NewJsonStore(filePath)
 	kvStore := kvstore.NewKeyValueStore(jsonStore)
 
-	rn := raftnode.NewRaftNode(*id, kvStore, *initialCluster, *snapshotDir, *logDir)
+	rn := raftnode.NewRaftNode(*id, kvStore, *initialCluster, *snapshotDir, *logDir, *join)
 
 	apiServer := httpapi.ApiServer{rn}
 	peerServer := httpapi.PeerServer{rn}

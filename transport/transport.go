@@ -38,6 +38,14 @@ func NewHTTPTransport(id uint64, peers []string) *HttpTransport {
 	}
 }
 
+func (t *HttpTransport) AddPeer(newNodeID uint64, newPeerURL string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.peerMap[newPeerURL] = newNodeID
+	t.peers = append(t.peers, newPeerURL)
+	log.Printf("Added new peer: Node ID %d, URL: %s", newNodeID, newPeerURL)
+}
+
 func (t *HttpTransport) Send(messages []raftpb.Message) {
 	for _, msg := range messages {
 		if msg.To == t.id {
