@@ -49,7 +49,6 @@ func (js *JsonStore) Set(key, value string) error {
 		return err
 	}
 
-	// Write the updated map to a new JSON file
 	err = os.WriteFile(js.filePath, output, 0644)
 	if err != nil {
 		fmt.Println("Error writing file:", err)

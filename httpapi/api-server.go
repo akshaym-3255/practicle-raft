@@ -37,6 +37,22 @@ func (as *ApiServer) ServeHTTP(clientListenURL string) {
 }
 
 func (as *ApiServer) handleGet(w http.ResponseWriter, r *http.Request) {
+
+	// Check if this node is the leader
+	if as.RaftNode.Node.Status().Lead != as.RaftNode.Id {
+		// Not the leader, redirect the request to the leader node
+		leaderID := as.RaftNode.Node.Status().Lead
+		leaderAddress := as.RaftNode.Transport.GetPeerURL(leaderID)
+		if leaderAddress != "" {
+			http.Redirect(w, r, "http://"+leaderAddress+r.RequestURI, http.StatusTemporaryRedirect)
+			return
+		} else {
+			http.Error(w, "Leader unknown", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// This node is the leader, process the read request
 	vars := mux.Vars(r)
 	key := vars["key"]
 	if value, ok := as.RaftNode.KvStore.Get(key); ok {
@@ -45,6 +61,14 @@ func (as *ApiServer) handleGet(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}
 }
+
+//vars := mux.Vars(r)
+//key := vars["key"]
+//if value, ok := as.RaftNode.KvStore.Get(key); ok {
+//	json.NewEncoder(w).Encode(value)
+//} else {
+//	http.NotFound(w, r)
+//}
 
 func (as *ApiServer) handleSet(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("handleSet")

@@ -41,8 +41,10 @@ func NewHTTPTransport(id uint64, peers []string) *HttpTransport {
 func (t *HttpTransport) AddPeer(newNodeID uint64, newPeerURL string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.peerMap[newPeerURL] = newNodeID
-	t.peers = append(t.peers, newPeerURL)
+	if newPeerURL != "" {
+		t.peerMap[newPeerURL] = newNodeID
+		t.peers = append(t.peers, newPeerURL)
+	}
 	log.Printf("Added new peer: Node ID %d, URL: %s", newNodeID, newPeerURL)
 }
 
@@ -60,11 +62,12 @@ func (t *HttpTransport) SendMessage(msg raftpb.Message) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	data, err := msg.Marshal()
+	log.Printf("Sending message from node %d to node %d of type %s", msg.From, msg.To, msg.Type)
 	if err != nil {
 		log.Printf("failed to marshal message: %v", err)
 		return
 	}
-	peerURL := t.getPeerURL(msg.To)
+	peerURL := t.GetPeerURL(msg.To)
 	if peerURL == "" {
 		log.Printf("failed to find peer URL for node %d", msg.To)
 		return
@@ -81,7 +84,7 @@ func (t *HttpTransport) SendMessage(msg raftpb.Message) {
 	}
 }
 
-func (t *HttpTransport) getPeerURL(id uint64) string {
+func (t *HttpTransport) GetPeerURL(id uint64) string {
 	for peer, peerID := range t.peerMap {
 		if peerID == id {
 			return peer

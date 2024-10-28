@@ -18,7 +18,7 @@ import (
 )
 
 type RaftNode struct {
-	id                uint64
+	Id                uint64
 	Node              raft.Node
 	storage           *raft.MemoryStorage
 	Transport         *transport.HttpTransport
@@ -58,8 +58,8 @@ func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster strin
 
 	c := &raft.Config{
 		ID:                        id,
-		ElectionTick:              10,
-		HeartbeatTick:             1,
+		ElectionTick:              100,
+		HeartbeatTick:             10,
 		Storage:                   storage,
 		MaxInflightMsgs:           256,
 		MaxSizePerMsg:             1024 * 1024,
@@ -82,7 +82,7 @@ func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster strin
 	tp := transport.NewHTTPTransport(id, peerURLs)
 
 	rn := &RaftNode{
-		id:                id,
+		Id:                id,
 		Node:              n,
 		storage:           storage,
 		Transport:         tp,
@@ -113,9 +113,10 @@ func (rn *RaftNode) Run() {
 				rn.maybeTriggerSnapshot(rd.CommittedEntries[len(rd.CommittedEntries)-1].Index)
 			}
 
-			rn.appendToLog(rd.Entries)
+			rn.appendToLog(rd.CommittedEntries)
 
 			for _, entry := range rd.CommittedEntries {
+
 				if entry.Type == raftpb.EntryNormal && len(entry.Data) > 0 {
 					var cmd map[string]string
 					if err := json.Unmarshal(entry.Data, &cmd); err == nil {
@@ -216,16 +217,13 @@ func (rn *RaftNode) AddNode(newNodeID uint64, newNodeURL string) error {
 	return nil
 }
 
-// compactLogFile removes log entries before the given appliedIndex from the log file
 func compactLogFile(logDir string, appliedIndex uint64) error {
-	// Open the log file
 	logFile, err := os.OpenFile(logDir+"/node.log", os.O_RDWR, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open log file for compaction: %v", err)
 	}
 	defer logFile.Close()
 
-	// Scanner for reading the log file line-by-line
 	scanner := bufio.NewScanner(logFile)
 	var newLogEntries []raftpb.Entry
 
@@ -235,20 +233,17 @@ func compactLogFile(logDir string, appliedIndex uint64) error {
 			return fmt.Errorf("failed to unmarshal log entry from JSON in file %s: %w", logFile, err)
 		}
 
-		// Convert the JSON back into a raftpb.Entry
 		entry := raftpb.Entry{
 			Index: uint64(logEntry["index"].(float64)),                                 // Cast to uint64
 			Term:  uint64(logEntry["term"].(float64)),                                  // Cast to uint64
 			Type:  raftpb.EntryType(raftpb.EntryType_value[logEntry["type"].(string)]), // Convert string back to EntryType
 			Data:  []byte(logEntry["data"].(string)),                                   // Convert data back to bytes
 		}
-		// Only keep entries after or at the appliedIndex (since older entries are in the snapshot)
 		if entry.Index >= appliedIndex {
 			newLogEntries = append(newLogEntries, entry)
 		}
 	}
 
-	// Truncate and rewrite the log file with only the new entries
 	if err := logFile.Truncate(0); err != nil {
 		return fmt.Errorf("failed to truncate log file: %v", err)
 	}

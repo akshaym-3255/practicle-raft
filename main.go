@@ -6,10 +6,15 @@ import (
 	"akshay-raft/raftnode"
 	"flag"
 	"fmt"
+	"log"
 	"strconv"
 )
 
 func main() {
+
+	log.SetFlags(log.LstdFlags | log.Lshortfile) // Show date, time, and file name with line number
+	log.SetPrefix("DEBUG: ")
+
 	id := flag.Uint64("id", 1, "node ID")
 	clientListenURLs := flag.String("listen-client-urls", "http://localhost:2379", "client listen URL")
 	peerListenURLs := flag.String("listen-peer-urls", "http://localhost:2380", "peer listen URL")
@@ -37,22 +42,3 @@ func main() {
 	go rn.Run()
 	select {}
 }
-
-// taks to be done
-// orgnaize code seprate out raft node processing
-// seprate out trasport and server
-// key value store
-// add support for json file store
-// add support for wal log
-// add support for snapshot
-// add support for cluster membership
-// add support for grpc
-// add support for any other key value store
-
-/// hwo snapshot and log works in raft
-// snapshot
-
-//how raft works
-// how wal
-
-// raft bbolt btree

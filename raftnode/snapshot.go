@@ -22,7 +22,6 @@ func loadSnapshot(dir string, store *kvstore.KeyValueStore) (*raftpb.Snapshot, e
 		return nil, nil
 	}
 
-	// Load the latest snapshot
 	snapshotFile := snapshotFiles[len(snapshotFiles)-1]
 	snapshotData, err := os.ReadFile(snapshotFile)
 	if err != nil {
@@ -39,7 +38,6 @@ func loadSnapshot(dir string, store *kvstore.KeyValueStore) (*raftpb.Snapshot, e
 		return nil, fmt.Errorf("failed to restore application state: %v", err)
 	}
 
-	// restore key value store here
 	err = store.Restore(state)
 	if err != nil {
 		return nil, fmt.Errorf("failed to restore application state: %v", err)
@@ -49,7 +47,6 @@ func loadSnapshot(dir string, store *kvstore.KeyValueStore) (*raftpb.Snapshot, e
 	return &snapshot, nil
 }
 
-// Save the snapshot to disk
 func saveSnapshot(snapshotDir string, snapshot raftpb.Snapshot) error {
 	snapshotFile := filepath.Join(snapshotDir, fmt.Sprintf("snapshot-%d.snap", snapshot.Metadata.Index))
 	data, err := snapshot.Marshal()

@@ -12,7 +12,6 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 )
 
-// loadRaftLog loads the Raft logs from disk
 func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
 	logFiles, err := filepath.Glob(filepath.Join(dir, "*.log"))
 	if err != nil {
@@ -26,7 +25,6 @@ func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
 		}
 		defer file.Close()
 
-		// Read each line (each line is a JSON-encoded log entry)
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			var logEntry map[string]interface{}
@@ -34,7 +32,6 @@ func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
 				return fmt.Errorf("failed to unmarshal log entry from JSON in file %s: %w", logFile, err)
 			}
 
-			// Convert the JSON back into a raftpb.Entry
 			entry := raftpb.Entry{
 				Index: uint64(logEntry["index"].(float64)),                                 // Cast to uint64
 				Term:  uint64(logEntry["term"].(float64)),                                  // Cast to uint64
@@ -42,7 +39,6 @@ func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
 				Data:  []byte(logEntry["data"].(string)),                                   // Convert data back to bytes
 			}
 
-			// Append the entry to the Raft storage
 			if err := storage.Append([]raftpb.Entry{entry}); err != nil {
 				return fmt.Errorf("failed to append log entry to Raft storage: %w", err)
 			}
@@ -55,28 +51,24 @@ func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
 }
 
 func appendToLogFile(logDir string, entry raftpb.Entry) error {
-	// Open the file in append mode, create if it doesn't exist
 	file, err := os.OpenFile(logDir+"/node.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	// Serialize the log entry to JSON
 	logEntry := map[string]interface{}{
 		"index": entry.Index,
 		"term":  entry.Term,
-		"type":  entry.Type.String(), // Convert the EntryType to a string
-		"data":  string(entry.Data),  // Assuming the data is a string, adjust for other formats
+		"type":  entry.Type.String(),
+		"data":  string(entry.Data),
 	}
 
-	// Convert the log entry to JSON format
 	jsonData, err := json.Marshal(logEntry)
 	if err != nil {
 		return err
 	}
 
-	// Append the JSON data to the file, followed by a newline for separation
 	_, err = file.Write(append(jsonData, '\n'))
 	if err != nil {
 		return err
