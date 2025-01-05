@@ -106,11 +106,8 @@ func (js *JsonStore) Dump() map[string]string {
 		}
 	}(inputFile)
 
-	byteValue, _ := io.ReadAll(inputFile)
-	var data map[string]string
-	err = json.Unmarshal(byteValue, &data)
+	data, err := readData(inputFile, err)
 	if err != nil {
-		logger.Log.Errorln("Error unmarshalling JSON:", err)
 		return nil
 	}
 
@@ -118,15 +115,8 @@ func (js *JsonStore) Dump() map[string]string {
 }
 
 func (js *JsonStore) Restore(data map[string]string) error {
-	output, err := json.MarshalIndent(data, "", "  ")
+	err := writeData(data, js.filePath)
 	if err != nil {
-		logger.Log.Errorln("Error marshalling JSON:", err)
-		return err
-	}
-
-	err = os.WriteFile(js.filePath, output, 0644)
-	if err != nil {
-		logger.Log.Errorln("Error writing file:", err)
 		return err
 	}
 	return nil
