@@ -25,6 +25,7 @@ func (as *ApiServer) ServeHTTP(clientListenURL string) {
 	r := mux.NewRouter()
 	r.HandleFunc("/kv/{key}", as.handleGet).Methods("GET")
 	r.HandleFunc("/kv/{key}", as.handleSet).Methods("PUT")
+	r.HandleFunc("/kv/{key}", as.handleDelete).Methods("DELETE")
 	r.HandleFunc("/add-node", as.addNodeHandler).Methods("POST")
 	r.HandleFunc("/add-node", as.removeNodeHandler).Methods("DELETE")
 
@@ -124,8 +125,14 @@ func (as *ApiServer) handleSet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	cmd := map[string]string{key: value[key]}
-	data, err := json.Marshal(cmd)
+
+	logDataEntry := raftnode.LogDataEntry{
+		Operation: "Add",
+		Key:       key,
+		Value:     value[key],
+	}
+
+	data, err := json.Marshal(logDataEntry)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -145,6 +152,37 @@ func (as *ApiServer) handleSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If Propose succeeds, respond with no content
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (as *ApiServer) handleDelete(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	key := vars["key"]
+
+	logDataEntry := raftnode.LogDataEntry{
+		Operation: "Delete",
+		Key:       key,
+	}
+
+	data, err := json.Marshal(logDataEntry)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = as.RaftNode.Node.Propose(ctx, data)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			http.Error(w, "Propose operation timed out", http.StatusRequestTimeout)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 

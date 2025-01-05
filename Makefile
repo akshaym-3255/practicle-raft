@@ -23,4 +23,4 @@ server4:
 	go run .  -id 4  -listen-client-urls http://localhost:2385  -listen-peer-urls http://localhost:2386  -initial-cluster 1=http://localhost:2380,2=http://localhost:2382,3=http://localhost:2384,4=http://localhost:2386  --snapshot-dir /Users/akshay.mohite/open-source/akshay-raft/snapshots/member4 -join true
 
 server5:
-	go run .  -id 4  -listen-client-urls http://localhost:2387  -listen-peer-urls http://localhost:2388  -initial-cluster 1=http://localhost:2380,2=http://localhost:2382,3=http://localhost:2384,4=http://localhost:2386,5=http://localhost:2388  --snapshot-dir /Users/akshay.mohite/open-source/akshay-raft/snapshots/member5 -join true
+	go run .  -id 5  -listen-client-urls http://localhost:2387  -listen-peer-urls http://localhost:2388  -initial-cluster 1=http://localhost:2380,2=http://localhost:2382,3=http://localhost:2384,4=http://localhost:2386,5=http://localhost:2388  --snapshot-dir /Users/akshay.mohite/open-source/akshay-raft/snapshots/member5 -join true

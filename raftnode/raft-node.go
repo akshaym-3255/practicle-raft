@@ -71,6 +71,12 @@ type RaftNode struct {
 	CommitIndex uint64
 }
 
+type LogDataEntry struct {
+	Operation string `json:"operation"`
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+}
+
 func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster string, snapshotDir, logDir string, join bool) *RaftNode {
 
 	loggerRaft := logrus.New()
@@ -161,27 +167,24 @@ func (rn *RaftNode) Run() {
 			}
 			rn.Transport.Send(rd.Messages)
 			if len(rd.CommittedEntries) > 0 {
-
 				// to demo readState
 				//if rn.Id == 3 {
 				//	time.Sleep(30 * time.Second)
 				//}
-
 				rn.CommitIndex = rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
 				rn.maybeTriggerSnapshot(rd.CommittedEntries[len(rd.CommittedEntries)-1].Index)
 				rn.appendToLog(rd.CommittedEntries)
-
-				//if rn.CommitIndex < rd.CommittedEntries[0].Index {
-				//}
 			}
 
 			for _, entry := range rd.CommittedEntries {
 
 				if entry.Type == raftpb.EntryNormal && len(entry.Data) > 0 {
-					var cmd map[string]string
-					if err := json.Unmarshal(entry.Data, &cmd); err == nil {
-						for k, v := range cmd {
-							rn.KvStore.Set(k, v)
+					var logDataEntry LogDataEntry
+					if err := json.Unmarshal(entry.Data, &logDataEntry); err == nil {
+						if logDataEntry.Operation == "Add" {
+							rn.KvStore.Set(logDataEntry.Key, logDataEntry.Value)
+						} else if logDataEntry.Operation == "Delete" {
+							rn.KvStore.Delete(logDataEntry.Key)
 						}
 					}
 				}
@@ -208,7 +211,7 @@ func (rn *RaftNode) Run() {
 }
 
 func (rn *RaftNode) maybeTriggerSnapshot(appliedIndex uint64) {
-	snapshotThreshold := uint64(10)
+	snapshotThreshold := uint64(1000)
 	if appliedIndex-rn.lastSnapshotIndex >= snapshotThreshold {
 		logger.Log.Infof("Triggering snapshot at applied index: %d", appliedIndex)
 		rn.createSnapshot(appliedIndex)

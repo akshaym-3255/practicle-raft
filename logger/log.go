@@ -10,6 +10,6 @@ var Log *logrus.Logger
 func init() {
 	Log = logrus.New()
 	Log.SetFormatter(&logrus.JSONFormatter{})
-	Log.SetLevel(logrus.WarnLevel)
+	Log.SetLevel(logrus.InfoLevel)
 	Log.SetOutput(os.Stdout)
 }

@@ -29,28 +29,15 @@ func (js *JsonStore) Set(key, value string) error {
 		}
 	}(inputFile)
 
-	byteValue, _ := io.ReadAll(inputFile)
-	if len(byteValue) == 0 {
-		byteValue = []byte("{}")
-
-	}
-	var data map[string]string
-	err = json.Unmarshal(byteValue, &data)
+	data, err := readData(inputFile, err)
 	if err != nil {
 		return err
 	}
 
 	data[key] = value
 
-	output, err := json.MarshalIndent(data, "", "  ")
+	err = writeData(data, js.filePath)
 	if err != nil {
-		logger.Log.Errorln("Error marshalling JSON:", err)
-		return err
-	}
-
-	err = os.WriteFile(js.filePath, output, 0644)
-	if err != nil {
-		logger.Log.Errorln("Error writing file:", err)
 		return err
 	}
 	return nil
@@ -70,15 +57,39 @@ func (js *JsonStore) Get(key string) (string, bool) {
 		}
 	}(inputFile)
 
-	byteValue, _ := io.ReadAll(inputFile)
-	var data map[string]string
-	err = json.Unmarshal(byteValue, &data)
+	data, err := readData(inputFile, err)
 	if err != nil {
-		logger.Log.Errorln("Error unmarshalling JSON:", err)
 		return "", false
 	}
 
 	return data[key], true
+}
+
+func (js *JsonStore) Delete(key string) error {
+	inputFile, err := os.Open(js.filePath)
+	if err != nil {
+		return err
+	}
+
+	defer func(inputFile *os.File) {
+		err := inputFile.Close()
+		if err != nil {
+			logger.Log.Errorln("Error closing file:", err)
+		}
+	}(inputFile)
+
+	data, err := readData(inputFile, err)
+	if err != nil {
+		return err
+	}
+
+	delete(data, key)
+
+	err = writeData(data, js.filePath)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (js *JsonStore) Dump() map[string]string {
@@ -119,4 +130,32 @@ func (js *JsonStore) Restore(data map[string]string) error {
 		return err
 	}
 	return nil
+}
+
+func writeData(data map[string]string, filePath string) error {
+	output, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		logger.Log.Errorln("Error marshalling JSON:", err)
+		return err
+	}
+	err = os.WriteFile(filePath, output, 0644)
+	if err != nil {
+		logger.Log.Errorln("Error writing file:", err)
+		return err
+	}
+	return nil
+}
+
+func readData(inputFile *os.File, err error) (map[string]string, error) {
+	byteValue, _ := io.ReadAll(inputFile)
+	if len(byteValue) == 0 {
+		byteValue = []byte("{}")
+
+	}
+	var data map[string]string
+	err = json.Unmarshal(byteValue, &data)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
