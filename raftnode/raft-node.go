@@ -13,25 +13,69 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 )
 
+// RaftNode is a wrapper around the core Raft.Node, encapsulating additional functionalities and state.
 type RaftNode struct {
-	Id                uint64
-	Node              raft.Node
-	storage           *raft.MemoryStorage
-	Transport         *transport.HttpTransport
-	KvStore           kvstore.KeyValueStore
-	ConfState         raftpb.ConfState
-	stopc             chan struct{}
-	httpServer        *http.Server
-	snapshotDir       string
-	logDir            string
+	// Id is the unique identifier for this node in the Raft cluster.
+	Id uint64
+
+	// Node represents the core Raft instance for this node,
+	// managing consensus and state replication.
+	Node raft.Node
+
+	// storage is an in-memory storage used by the Raft library
+	// to store logs, snapshots, and metadata.
+	storage *raft.MemoryStorage
+
+	// Transport handles network communication between nodes in the Raft cluster,
+	// using HTTP as the transport protocol.
+	Transport *transport.HttpTransport
+
+	// KvStore represents the key-value store that
+	// holds the application state replicated across the cluster.
+	KvStore kvstore.KeyValueStore
+
+	// ConfState holds the current configuration state of the cluster,
+	// including members and their roles.
+	ConfState raftpb.ConfState
+
+	// ReadState is a channel for receiving linearizable read states
+	// (`raft.ReadState`) requested by clients.
+	ReadState chan raft.ReadState
+
+	// stopc is a channel used to signal the Raft node to shut down gracefully.
+	stopc chan struct{}
+
+	// httpServer is the HTTP server instance
+	// used for exposing APIs and interacting with clients.
+	httpServer *http.Server
+
+	// snapshotDir is the directory where snapshots of the Raft state machine
+	// are stored for recovery purposes.
+	snapshotDir string
+
+	// logDir is the directory where Raft log files
+	// are stored for durability and replaying state.
+	logDir string
+
+	// lastSnapshotIndex is the index of the
+	// last snapshot applied, used for log compaction and recovery.
 	lastSnapshotIndex uint64
+
+	// CommitIndex is the highest log entry index
+	// that has been committed to the state machine.
+	CommitIndex uint64
 }
 
 func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster string, snapshotDir, logDir string, join bool) *RaftNode {
+
+	logger := logrus.New()
+	logger.SetLevel(logrus.DebugLevel)
+	raft.SetLogger(logger)
 	snapshot, err := loadSnapshot(snapshotDir, kvStore)
 	if err != nil {
 		log.Fatalf("Error loading snapshot: %v", err)
@@ -52,6 +96,7 @@ func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster strin
 	}
 
 	// Recovering the node's logs from the log directory
+	log.Printf("recovering from logs")
 	if err := loadRaftLog(logDir, storage); err != nil {
 		log.Fatalf("Error loading logs: %v", err)
 	}
@@ -74,6 +119,7 @@ func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster strin
 
 	var n raft.Node
 	if join {
+		log.Printf("restarting Node")
 		n = raft.RestartNode(c)
 	} else {
 		n = raft.StartNode(c, raftPeers)
@@ -88,6 +134,7 @@ func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster strin
 		Transport:         tp,
 		KvStore:           *kvStore,
 		stopc:             make(chan struct{}),
+		ReadState:         make(chan raft.ReadState),
 		snapshotDir:       snapshotDir,
 		logDir:            logDir,
 		lastSnapshotIndex: lastSnapshotIndex,
@@ -105,11 +152,21 @@ func (rn *RaftNode) Run() {
 			return
 		case rd := <-rn.Node.Ready():
 
+			for _, rs := range rd.ReadStates {
+				rn.ReadState <- rs
+			}
+
 			if err := rn.storage.Append(rd.Entries); err != nil {
 				log.Fatal(err)
 			}
 			rn.Transport.Send(rd.Messages)
 			if len(rd.CommittedEntries) > 0 {
+
+				// to demo readState
+				//if rn.Id == 3 {
+				//	time.Sleep(30 * time.Second)
+				//}
+				rn.CommitIndex = rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
 				rn.maybeTriggerSnapshot(rd.CommittedEntries[len(rd.CommittedEntries)-1].Index)
 			}
 
@@ -214,6 +271,26 @@ func (rn *RaftNode) AddNode(newNodeID uint64, newNodeURL string) error {
 	rn.Transport.AddPeer(newNodeID, newNodeURL)
 
 	log.Printf("Proposed configuration change to add node %d", newNodeID)
+	return nil
+}
+
+func (rn *RaftNode) RemoveNode(nodeId uint64) error {
+	log.Printf("Removing new node with ID %d", nodeId)
+
+	cc := raftpb.ConfChange{
+		Type:    raftpb.ConfChangeRemoveNode,
+		NodeID:  nodeId,
+		Context: []byte("deleteNode"),
+	}
+
+	err := rn.Node.ProposeConfChange(context.TODO(), cc)
+	if err != nil {
+		return fmt.Errorf("failed to propose conf change: %v", err)
+	}
+
+	rn.Transport.RemovePeer(nodeId)
+
+	log.Printf("Proposed configuration change to remove node %d", nodeId)
 	return nil
 }
 

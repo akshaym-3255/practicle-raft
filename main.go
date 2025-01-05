@@ -23,6 +23,7 @@ func main() {
 
 	snapshotDir := flag.String("snapshot-dir", "", "snapshot dir")
 	logDir := snapshotDir
+	fmt.Println(logDir)
 
 	//peers := flag.String("peers", "http://localhost:2382,http://localhost:2384", "comma-separated list of peer URLs")
 

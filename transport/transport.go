@@ -14,38 +14,50 @@ import (
 )
 
 type HttpTransport struct {
-	id      uint64
-	peers   []string
+	id uint64
+	// peers   []string
 	client  *http.Client
-	peerMap map[string]uint64
+	peerMap map[uint64]string
 	RecvC   chan raftpb.Message
 	mu      sync.Mutex
 }
 
 func NewHTTPTransport(id uint64, peers []string) *HttpTransport {
-	peerMap := make(map[string]uint64)
+	peerMap := make(map[uint64]string)
 	for _, peer := range peers {
 		idHost := strings.Split(peer, "=")
 		id, _ := strconv.ParseInt(idHost[0], 10, 64)
-		peerMap[idHost[1]] = uint64(id)
+		peerMap[uint64(id)] = idHost[1]
 	}
 	return &HttpTransport{
 		id:      id,
-		peers:   peers,
 		client:  &http.Client{},
 		peerMap: peerMap,
 		RecvC:   make(chan raftpb.Message, 1024),
 	}
 }
 
+func (t *HttpTransport) GetPeerURL(id uint64) string {
+	if url, ok := t.peerMap[id]; ok {
+		return url
+	}
+	return ""
+}
+
 func (t *HttpTransport) AddPeer(newNodeID uint64, newPeerURL string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if newPeerURL != "" {
-		t.peerMap[newPeerURL] = newNodeID
-		t.peers = append(t.peers, newPeerURL)
+		t.peerMap[newNodeID] = newPeerURL
 	}
 	log.Printf("Added new peer: Node ID %d, URL: %s", newNodeID, newPeerURL)
+}
+
+func (t *HttpTransport) RemovePeer(nodeId uint64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.peerMap, nodeId)
+	log.Printf("Removed new peer: Node ID %d", nodeId)
 }
 
 func (t *HttpTransport) Send(messages []raftpb.Message) {
@@ -62,7 +74,7 @@ func (t *HttpTransport) SendMessage(msg raftpb.Message) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	data, err := msg.Marshal()
-	log.Printf("Sending message from node %d to node %d of type %s", msg.From, msg.To, msg.Type)
+
 	if err != nil {
 		log.Printf("failed to marshal message: %v", err)
 		return
@@ -82,15 +94,6 @@ func (t *HttpTransport) SendMessage(msg raftpb.Message) {
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("failed to send message to %s, status: %v", url, resp.Status)
 	}
-}
-
-func (t *HttpTransport) GetPeerURL(id uint64) string {
-	for peer, peerID := range t.peerMap {
-		if peerID == id {
-			return peer
-		}
-	}
-	return ""
 }
 
 func (t *HttpTransport) Receive(w http.ResponseWriter, r *http.Request) {
