@@ -3,7 +3,7 @@ import json
 
 url = "http://localhost:2379/kv"
 
-for i in range(10):
+for i in range(10, 20):
     keyString = "key" + str(i)
     valString = "value" + str(i)
     payload = json.dumps({

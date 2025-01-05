@@ -1,10 +1,10 @@
 package transport
 
 import (
+	"akshay-raft/logger"
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -50,14 +50,14 @@ func (t *HttpTransport) AddPeer(newNodeID uint64, newPeerURL string) {
 	if newPeerURL != "" {
 		t.peerMap[newNodeID] = newPeerURL
 	}
-	log.Printf("Added new peer: Node ID %d, URL: %s", newNodeID, newPeerURL)
+	logger.Log.Infof("Added new peer: Node ID %d, URL: %s", newNodeID, newPeerURL)
 }
 
 func (t *HttpTransport) RemovePeer(nodeId uint64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.peerMap, nodeId)
-	log.Printf("Removed new peer: Node ID %d", nodeId)
+	logger.Log.Infof("Removed new peer: Node ID %d", nodeId)
 }
 
 func (t *HttpTransport) Send(messages []raftpb.Message) {
@@ -76,23 +76,23 @@ func (t *HttpTransport) SendMessage(msg raftpb.Message) {
 	data, err := msg.Marshal()
 
 	if err != nil {
-		log.Printf("failed to marshal message: %v", err)
+		logger.Log.Warnf("failed to marshal message: %v", err)
 		return
 	}
 	peerURL := t.GetPeerURL(msg.To)
 	if peerURL == "" {
-		log.Printf("failed to find peer URL for node %d", msg.To)
+		logger.Log.Warnf("failed to find peer URL for node %d", msg.To)
 		return
 	}
 	url := fmt.Sprintf("%s/raft", peerURL)
 	resp, err := t.client.Post(url, "application/octet-stream", bytes.NewReader(data))
 	if err != nil {
-		log.Printf("failed to send message to %s: %v", url, err)
+		logger.Log.Warnf("failed to send message to %s: %v", url, err)
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("failed to send message to %s, status: %v", url, resp.Status)
+		logger.Log.Warnf("failed to send message to %s, status: %v", url, resp.Status)
 	}
 }
 

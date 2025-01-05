@@ -2,9 +2,9 @@ package raftnode
 
 import (
 	"akshay-raft/kvstore"
+	"akshay-raft/logger"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -18,7 +18,7 @@ func loadSnapshot(dir string, store *kvstore.KeyValueStore) (*raftpb.Snapshot, e
 	}
 
 	if len(snapshotFiles) == 0 {
-		log.Println("No snapshot found")
+		logger.Log.Println("No snapshot found")
 		return nil, nil
 	}
 
@@ -43,12 +43,16 @@ func loadSnapshot(dir string, store *kvstore.KeyValueStore) (*raftpb.Snapshot, e
 		return nil, fmt.Errorf("failed to restore application state: %v", err)
 	}
 
-	log.Printf("Loaded snapshot: %s", snapshotFile)
+	logger.Log.Infof("Loaded snapshot: %s", snapshotFile)
 	return &snapshot, nil
 }
 
 func saveSnapshot(snapshotDir string, snapshot raftpb.Snapshot) error {
 	snapshotFile := filepath.Join(snapshotDir, fmt.Sprintf("snapshot-%d.snap", snapshot.Metadata.Index))
+
+	// delete already existing snapshot file
+	err := deletePreviousSnapshot(snapshotDir)
+
 	data, err := snapshot.Marshal()
 	if err != nil {
 		return err
@@ -58,6 +62,21 @@ func saveSnapshot(snapshotDir string, snapshot raftpb.Snapshot) error {
 		return err
 	}
 
-	log.Printf("Saved snapshot at index: %d", snapshot.Metadata.Index)
+	logger.Log.Infof("Saved snapshot at index: %d", snapshot.Metadata.Index)
+	return nil
+}
+
+func deletePreviousSnapshot(dir string) error {
+	snapshotFiles, err := filepath.Glob(filepath.Join(dir, "*.snap"))
+
+	if err != nil {
+		return err
+	}
+	for _, file := range snapshotFiles {
+		err := os.Remove(file)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }

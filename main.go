@@ -6,14 +6,10 @@ import (
 	"akshay-raft/raftnode"
 	"flag"
 	"fmt"
-	"log"
 	"strconv"
 )
 
 func main() {
-
-	log.SetFlags(log.LstdFlags | log.Lshortfile) // Show date, time, and file name with line number
-	log.SetPrefix("DEBUG: ")
 
 	id := flag.Uint64("id", 1, "node ID")
 	clientListenURLs := flag.String("listen-client-urls", "http://localhost:2379", "client listen URL")

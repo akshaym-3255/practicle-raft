@@ -1,6 +1,7 @@
 package kvstore
 
 import (
+	"akshay-raft/logger"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,14 +19,13 @@ func NewJsonStore(filePath string) *JsonStore {
 func (js *JsonStore) Set(key, value string) error {
 	inputFile, err := os.OpenFile(js.filePath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		fmt.Println(err)
 		return fmt.Errorf("error opening file: %v", err)
 	}
 
 	defer func(inputFile *os.File) {
 		err := inputFile.Close()
 		if err != nil {
-			fmt.Println("Error closing file:", err)
+			logger.Log.Errorln("Error closing file:", err)
 		}
 	}(inputFile)
 
@@ -37,7 +37,6 @@ func (js *JsonStore) Set(key, value string) error {
 	var data map[string]string
 	err = json.Unmarshal(byteValue, &data)
 	if err != nil {
-		fmt.Println("Error unmarshalling JSON:", err)
 		return err
 	}
 
@@ -45,13 +44,13 @@ func (js *JsonStore) Set(key, value string) error {
 
 	output, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		fmt.Println("Error marshalling JSON:", err)
+		logger.Log.Errorln("Error marshalling JSON:", err)
 		return err
 	}
 
 	err = os.WriteFile(js.filePath, output, 0644)
 	if err != nil {
-		fmt.Println("Error writing file:", err)
+		logger.Log.Errorln("Error writing file:", err)
 		return err
 	}
 	return nil
@@ -67,7 +66,7 @@ func (js *JsonStore) Get(key string) (string, bool) {
 	defer func(inputFile *os.File) {
 		err := inputFile.Close()
 		if err != nil {
-			fmt.Println("Error closing file:", err)
+			logger.Log.Errorln("Error closing file:", err)
 		}
 	}(inputFile)
 
@@ -75,7 +74,7 @@ func (js *JsonStore) Get(key string) (string, bool) {
 	var data map[string]string
 	err = json.Unmarshal(byteValue, &data)
 	if err != nil {
-		fmt.Println("Error unmarshalling JSON:", err)
+		logger.Log.Errorln("Error unmarshalling JSON:", err)
 		return "", false
 	}
 
@@ -92,7 +91,7 @@ func (js *JsonStore) Dump() map[string]string {
 	defer func(inputFile *os.File) {
 		err := inputFile.Close()
 		if err != nil {
-			fmt.Println("Error closing file:", err)
+			logger.Log.Errorln("Error closing file:", err)
 		}
 	}(inputFile)
 
@@ -100,7 +99,7 @@ func (js *JsonStore) Dump() map[string]string {
 	var data map[string]string
 	err = json.Unmarshal(byteValue, &data)
 	if err != nil {
-		fmt.Println("Error unmarshalling JSON:", err)
+		logger.Log.Errorln("Error unmarshalling JSON:", err)
 		return nil
 	}
 
@@ -110,13 +109,13 @@ func (js *JsonStore) Dump() map[string]string {
 func (js *JsonStore) Restore(data map[string]string) error {
 	output, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		fmt.Println("Error marshalling JSON:", err)
+		logger.Log.Errorln("Error marshalling JSON:", err)
 		return err
 	}
 
 	err = os.WriteFile(js.filePath, output, 0644)
 	if err != nil {
-		fmt.Println("Error writing file:", err)
+		logger.Log.Errorln("Error writing file:", err)
 		return err
 	}
 	return nil

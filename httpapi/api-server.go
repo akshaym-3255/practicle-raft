@@ -1,12 +1,12 @@
 package httpapi
 
 import (
+	"akshay-raft/logger"
 	"akshay-raft/raftnode"
 	"context"
 	"encoding/json"
 	"errors"
 	"github.com/gorilla/mux"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -29,9 +29,9 @@ func (as *ApiServer) ServeHTTP(clientListenURL string) {
 	r.HandleFunc("/add-node", as.removeNodeHandler).Methods("DELETE")
 
 	clientAddr := stripHTTPPrefix(clientListenURL)
-	log.Printf("Starting client HTTP server on %s", clientAddr)
+	logger.Log.Printf("Starting client HTTP server on %s", clientAddr)
 	if err := http.ListenAndServe(clientAddr, r); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("ListenAndServe(): %v", err)
+		logger.Log.Fatalf("ListenAndServe(): %v", err)
 	}
 
 }
@@ -60,7 +60,7 @@ func (as *ApiServer) handleGet(w http.ResponseWriter, r *http.Request) {
 	reqCtx := []byte(key)
 	ctx := context.TODO()
 
-	log.Printf("readIndex started")
+	logger.Log.Printf("readIndex started")
 	err := as.RaftNode.Node.ReadIndex(ctx, reqCtx)
 	if err != nil {
 		http.Error(w, "Failed to initiate ReadIndex", http.StatusInternalServerError)
@@ -166,7 +166,7 @@ func (as *ApiServer) addNodeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Printf("Sucessfully added node with NodeId %d", nodeID)
+	logger.Log.Infof("Sucessfully added node with NodeId %d", nodeID)
 }
 
 func (as *ApiServer) removeNodeHandler(w http.ResponseWriter, r *http.Request) {
@@ -182,6 +182,6 @@ func (as *ApiServer) removeNodeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Printf("Sucessfully removed node with NodeId %d", nodeID)
+	logger.Log.Infof("Sucessfully removed node with NodeId %d", nodeID)
 
 }

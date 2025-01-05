@@ -2,12 +2,12 @@ package raftnode
 
 import (
 	"akshay-raft/kvstore"
+	"akshay-raft/logger"
 	"akshay-raft/transport"
 	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -58,30 +58,30 @@ type RaftNode struct {
 	// are stored for recovery purposes.
 	snapshotDir string
 
-	// logDir is the directory where Raft log files
+	// logDir is the directory where Raft logger files
 	// are stored for durability and replaying state.
 	logDir string
 
 	// lastSnapshotIndex is the index of the
-	// last snapshot applied, used for log compaction and recovery.
+	// last snapshot applied, used for logger compaction and recovery.
 	lastSnapshotIndex uint64
 
-	// CommitIndex is the highest log entry index
+	// CommitIndex is the highest logger entry index
 	// that has been committed to the state machine.
 	CommitIndex uint64
 }
 
 func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster string, snapshotDir, logDir string, join bool) *RaftNode {
 
-	logger := logrus.New()
-	logger.SetLevel(logrus.DebugLevel)
-	raft.SetLogger(logger)
+	loggerRaft := logrus.New()
+	loggerRaft.SetLevel(logrus.WarnLevel)
+	raft.SetLogger(loggerRaft)
 	snapshot, err := loadSnapshot(snapshotDir, kvStore)
 	if err != nil {
-		log.Fatalf("Error loading snapshot: %v", err)
+		logger.Log.Fatalf("Error loading snapshot: %v", err)
 	}
 
-	// Create a storage for the Raft log and apply snapshot if found
+	// Create a storage for the Raft logger and apply snapshot if found
 	storage := raft.NewMemoryStorage()
 
 	var lastSnapshotIndex uint64
@@ -89,16 +89,16 @@ func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster strin
 	// Recovering the node by loading snapshot if exists
 	if snapshot != nil {
 		if err := storage.ApplySnapshot(*snapshot); err != nil {
-			log.Fatalf("Error applying snapshot: %v", err)
+			logger.Log.Fatalf("Error applying snapshot: %v", err)
 		}
 		confState = snapshot.Metadata.ConfState
 		lastSnapshotIndex = snapshot.Metadata.Index
 	}
 
-	// Recovering the node's logs from the log directory
-	log.Printf("recovering from logs")
+	// Recovering the node's logs from the logger directory
+	logger.Log.Infof("recovering from logs")
 	if err := loadRaftLog(logDir, storage); err != nil {
-		log.Fatalf("Error loading logs: %v", err)
+		logger.Log.Fatalf("Error loading logs: %v", err)
 	}
 
 	c := &raft.Config{
@@ -119,7 +119,7 @@ func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster strin
 
 	var n raft.Node
 	if join {
-		log.Printf("restarting Node")
+		logger.Log.Infof("restarting Node")
 		n = raft.RestartNode(c)
 	} else {
 		n = raft.StartNode(c, raftPeers)
@@ -157,7 +157,7 @@ func (rn *RaftNode) Run() {
 			}
 
 			if err := rn.storage.Append(rd.Entries); err != nil {
-				log.Fatal(err)
+				logger.Log.Fatal(err)
 			}
 			rn.Transport.Send(rd.Messages)
 			if len(rd.CommittedEntries) > 0 {
@@ -166,11 +166,14 @@ func (rn *RaftNode) Run() {
 				//if rn.Id == 3 {
 				//	time.Sleep(30 * time.Second)
 				//}
+
 				rn.CommitIndex = rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
 				rn.maybeTriggerSnapshot(rd.CommittedEntries[len(rd.CommittedEntries)-1].Index)
-			}
+				rn.appendToLog(rd.CommittedEntries)
 
-			rn.appendToLog(rd.CommittedEntries)
+				//if rn.CommitIndex < rd.CommittedEntries[0].Index {
+				//}
+			}
 
 			for _, entry := range rd.CommittedEntries {
 
@@ -186,7 +189,7 @@ func (rn *RaftNode) Run() {
 				if entry.Type == raftpb.EntryConfChange {
 					var cc raftpb.ConfChange
 					if err := cc.Unmarshal(entry.Data); err != nil {
-						log.Fatalf("failed to unmarshal conf change: %v", err)
+						logger.Log.Fatalf("failed to unmarshal conf change: %v", err)
 					}
 					rn.ConfState = *rn.Node.ApplyConfChange(cc)
 					rn.Transport.AddPeer(cc.NodeID, string(cc.Context))
@@ -207,7 +210,7 @@ func (rn *RaftNode) Run() {
 func (rn *RaftNode) maybeTriggerSnapshot(appliedIndex uint64) {
 	snapshotThreshold := uint64(10)
 	if appliedIndex-rn.lastSnapshotIndex >= snapshotThreshold {
-		log.Printf("Triggering snapshot at applied index: %d", appliedIndex)
+		logger.Log.Infof("Triggering snapshot at applied index: %d", appliedIndex)
 		rn.createSnapshot(appliedIndex)
 		rn.lastSnapshotIndex = appliedIndex
 	}
@@ -218,7 +221,7 @@ func (rn *RaftNode) createSnapshot(appliedIndex uint64) {
 	kvStateSnapData, err := json.Marshal(rn.KvStore.Dump())
 
 	if err != nil {
-		log.Fatalf("Failed to serialize state for snapshot: %v", err)
+		logger.Log.Fatalf("Failed to serialize state for snapshot: %v", err)
 	}
 
 	snapshot := raftpb.Snapshot{
@@ -231,17 +234,17 @@ func (rn *RaftNode) createSnapshot(appliedIndex uint64) {
 	}
 
 	if err := saveSnapshot(rn.snapshotDir, snapshot); err != nil {
-		log.Fatalf("Failed to save snapshot: %v", err)
+		logger.Log.Fatalf("Failed to save snapshot: %v", err)
 	}
 	if err := rn.storage.Compact(appliedIndex); err != nil {
-		log.Fatalf("Failed to compact Raft logs: %v", err)
+		logger.Log.Fatalf("Failed to compact Raft logs: %v", err)
 	}
 	err = compactLogFile(rn.logDir, appliedIndex)
 	if err != nil {
-		log.Fatalf("Failed to compact node.log file: %v", err)
+		logger.Log.Fatalf("Failed to compact node.logger file: %v", err)
 	}
 
-	log.Printf("Snapshot created at index: %d, term: %d", snapshot.Metadata.Index, snapshot.Metadata.Term)
+	logger.Log.Infof("Snapshot created at index: %d, term: %d", snapshot.Metadata.Index, snapshot.Metadata.Term)
 }
 
 func (rn *RaftNode) appendToLog(entries []raftpb.Entry) {
@@ -255,7 +258,7 @@ func (rn *RaftNode) appendToLog(entries []raftpb.Entry) {
 }
 
 func (rn *RaftNode) AddNode(newNodeID uint64, newNodeURL string) error {
-	log.Printf("Adding new node with ID %d, URL: %s", newNodeID, newNodeURL)
+	logger.Log.Infof("Adding new node with ID %d, URL: %s", newNodeID, newNodeURL)
 
 	cc := raftpb.ConfChange{
 		Type:    raftpb.ConfChangeAddNode,
@@ -270,12 +273,12 @@ func (rn *RaftNode) AddNode(newNodeID uint64, newNodeURL string) error {
 
 	rn.Transport.AddPeer(newNodeID, newNodeURL)
 
-	log.Printf("Proposed configuration change to add node %d", newNodeID)
+	logger.Log.Infof("Proposed configuration change to add node %d", newNodeID)
 	return nil
 }
 
 func (rn *RaftNode) RemoveNode(nodeId uint64) error {
-	log.Printf("Removing new node with ID %d", nodeId)
+	logger.Log.Infof("Removing new node with ID %d", nodeId)
 
 	cc := raftpb.ConfChange{
 		Type:    raftpb.ConfChangeRemoveNode,
@@ -290,14 +293,14 @@ func (rn *RaftNode) RemoveNode(nodeId uint64) error {
 
 	rn.Transport.RemovePeer(nodeId)
 
-	log.Printf("Proposed configuration change to remove node %d", nodeId)
+	logger.Log.Infof("Proposed configuration change to remove node %d", nodeId)
 	return nil
 }
 
 func compactLogFile(logDir string, appliedIndex uint64) error {
-	logFile, err := os.OpenFile(logDir+"/node.log", os.O_RDWR, 0644)
+	logFile, err := os.OpenFile(logDir+"/node.logger", os.O_RDWR, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open log file for compaction: %v", err)
+		return fmt.Errorf("failed to open logger file for compaction: %v", err)
 	}
 	defer logFile.Close()
 
@@ -307,7 +310,7 @@ func compactLogFile(logDir string, appliedIndex uint64) error {
 	for scanner.Scan() {
 		var logEntry map[string]interface{}
 		if err := json.Unmarshal(scanner.Bytes(), &logEntry); err != nil {
-			return fmt.Errorf("failed to unmarshal log entry from JSON in file %s: %w", logFile, err)
+			return fmt.Errorf("failed to unmarshal logger entry from JSON in file %s: %w", logFile, err)
 		}
 
 		entry := raftpb.Entry{
@@ -322,17 +325,17 @@ func compactLogFile(logDir string, appliedIndex uint64) error {
 	}
 
 	if err := logFile.Truncate(0); err != nil {
-		return fmt.Errorf("failed to truncate log file: %v", err)
+		return fmt.Errorf("failed to truncate logger file: %v", err)
 	}
 	if _, err := logFile.Seek(0, 0); err != nil {
-		return fmt.Errorf("failed to seek log file: %v", err)
+		return fmt.Errorf("failed to seek logger file: %v", err)
 	}
 
 	writer := bufio.NewWriter(logFile)
 	for _, entry := range newLogEntries {
 		err = appendToLogFile(logDir, entry)
 		if err != nil {
-			return fmt.Errorf("failed to encode log entry: %v", err)
+			return fmt.Errorf("failed to encode logger entry: %v", err)
 		}
 	}
 
@@ -340,7 +343,7 @@ func compactLogFile(logDir string, appliedIndex uint64) error {
 		return fmt.Errorf("failed to flush buffer: %v", err)
 	}
 
-	log.Printf("Log file compacted, removed entries before index: %d", appliedIndex)
+	logger.Log.Infof("Log file compacted, removed entries before index: %d", appliedIndex)
 	return nil
 
 }

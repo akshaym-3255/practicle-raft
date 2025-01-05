@@ -1,10 +1,10 @@
 package raftnode
 
 import (
+	"akshay-raft/logger"
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -13,7 +13,7 @@ import (
 )
 
 func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
-	logFiles, err := filepath.Glob(filepath.Join(dir, "*.log"))
+	logFiles, err := filepath.Glob(filepath.Join(dir, "*.logger"))
 	if err != nil {
 		return err
 	}
@@ -21,7 +21,7 @@ func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
 	for _, logFile := range logFiles {
 		file, err := os.Open(logFile)
 		if err != nil {
-			return fmt.Errorf("failed to open log file %s: %w", logFile, err)
+			return fmt.Errorf("failed to open logger file %s: %w", logFile, err)
 		}
 		defer file.Close()
 
@@ -29,7 +29,7 @@ func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
 		for scanner.Scan() {
 			var logEntry map[string]interface{}
 			if err := json.Unmarshal(scanner.Bytes(), &logEntry); err != nil {
-				return fmt.Errorf("failed to unmarshal log entry from JSON in file %s: %w", logFile, err)
+				return fmt.Errorf("failed to unmarshal logger entry from JSON in file %s: %w", logFile, err)
 			}
 
 			entry := raftpb.Entry{
@@ -40,10 +40,10 @@ func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
 			}
 
 			if err := storage.Append([]raftpb.Entry{entry}); err != nil {
-				return fmt.Errorf("failed to append log entry to Raft storage: %w", err)
+				return fmt.Errorf("failed to append logger entry to Raft storage: %w", err)
 			}
 
-			log.Printf("Loaded log entry from file: %s (Index: %d, Term: %d)", logFile, entry.Index, entry.Term)
+			logger.Log.Infof("Loaded logger entry from file: %s (Index: %d, Term: %d)", logFile, entry.Index, entry.Term)
 
 		}
 	}
@@ -51,7 +51,7 @@ func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
 }
 
 func appendToLogFile(logDir string, entry raftpb.Entry) error {
-	file, err := os.OpenFile(logDir+"/node.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(logDir+"/node.logger", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -74,6 +74,6 @@ func appendToLogFile(logDir string, entry raftpb.Entry) error {
 		return err
 	}
 
-	log.Printf("Appended log entry: %v", logEntry)
+	logger.Log.Infof("Appended logger entry: %v", logEntry)
 	return nil
 }
