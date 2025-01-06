@@ -33,10 +33,10 @@ func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
 			}
 
 			entry := raftpb.Entry{
-				Index: uint64(logEntry["index"].(float64)),                                 // Cast to uint64
-				Term:  uint64(logEntry["term"].(float64)),                                  // Cast to uint64
-				Type:  raftpb.EntryType(raftpb.EntryType_value[logEntry["type"].(string)]), // Convert string back to EntryType
-				Data:  []byte(logEntry["data"].(string)),                                   // Convert data back to bytes
+				Index: uint64(logEntry["index"].(float64)),
+				Term:  uint64(logEntry["term"].(float64)),
+				Type:  raftpb.EntryType(raftpb.EntryType_value[logEntry["type"].(string)]),
+				Data:  []byte(logEntry["data"].(string)),
 			}
 
 			if err := storage.Append([]raftpb.Entry{entry}); err != nil {
@@ -44,7 +44,6 @@ func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
 			}
 
 			logger.Log.Infof("Loaded logger entry from file: %s (Index: %d, Term: %d)", logFile, entry.Index, entry.Term)
-
 		}
 	}
 	return nil
@@ -95,10 +94,10 @@ func compactLogFile(logDir string, appliedIndex uint64) error {
 		}
 
 		entry := raftpb.Entry{
-			Index: uint64(logEntry["index"].(float64)),                                 // Cast to uint64
-			Term:  uint64(logEntry["term"].(float64)),                                  // Cast to uint64
-			Type:  raftpb.EntryType(raftpb.EntryType_value[logEntry["type"].(string)]), // Convert string back to EntryType
-			Data:  []byte(logEntry["data"].(string)),                                   // Convert data back to bytes
+			Index: uint64(logEntry["index"].(float64)),
+			Term:  uint64(logEntry["term"].(float64)),
+			Type:  raftpb.EntryType(raftpb.EntryType_value[logEntry["type"].(string)]),
+			Data:  []byte(logEntry["data"].(string)),
 		}
 		if entry.Index >= appliedIndex {
 			newLogEntries = append(newLogEntries, entry)
@@ -126,5 +125,4 @@ func compactLogFile(logDir string, appliedIndex uint64) error {
 
 	logger.Log.Infof("Log file compacted, removed entries before index: %d", appliedIndex)
 	return nil
-
 }

@@ -31,14 +31,13 @@ func (as *ApiServer) ServeHTTP(clientListenURL string) {
 
 	clientAddr := stripHTTPPrefix(clientListenURL)
 	logger.Log.Printf("Starting client HTTP server on %s", clientAddr)
-	if err := http.ListenAndServe(clientAddr, r); err != nil && err != http.ErrServerClosed {
+	if err := http.ListenAndServe(clientAddr, r); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Log.Fatalf("ListenAndServe(): %v", err)
 	}
 
 }
 
 func (as *ApiServer) handleGet(w http.ResponseWriter, r *http.Request) {
-
 	vars := mux.Vars(r)
 	key := vars["key"]
 	if key == "" {
@@ -46,6 +45,7 @@ func (as *ApiServer) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// if leader no need to do linearized check
 	if as.RaftNode.Node.Status().Lead == as.RaftNode.Id {
 		value, ok := as.RaftNode.KvStore.Get(key)
 
@@ -60,8 +60,6 @@ func (as *ApiServer) handleGet(w http.ResponseWriter, r *http.Request) {
 
 	reqCtx := []byte(key)
 	ctx := context.TODO()
-
-	logger.Log.Printf("readIndex started")
 	err := as.RaftNode.Node.ReadIndex(ctx, reqCtx)
 	if err != nil {
 		http.Error(w, "Failed to initiate ReadIndex", http.StatusInternalServerError)
@@ -89,6 +87,7 @@ func (as *ApiServer) handleGet(w http.ResponseWriter, r *http.Request) {
 
 	if waitOver {
 		http.Error(w, "Key not found", http.StatusInternalServerError)
+		return
 	}
 
 	value, ok := as.RaftNode.KvStore.Get(key)
@@ -133,7 +132,7 @@ func (as *ApiServer) handleSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logDataEntry := raftnode.LogDataEntry{
-		Operation: "Add",
+		Operation: raftnode.OperationAdd,
 		Key:       key,
 		Value:     value[key],
 	}
@@ -166,7 +165,7 @@ func (as *ApiServer) handleDelete(w http.ResponseWriter, r *http.Request) {
 	key := vars["key"]
 
 	logDataEntry := raftnode.LogDataEntry{
-		Operation: "Delete",
+		Operation: raftnode.OperationDelete,
 		Key:       key,
 	}
 

@@ -12,24 +12,25 @@ type JsonStore struct {
 	filePath string
 }
 
+func handleFileClose(storeFile *os.File) {
+	err := storeFile.Close()
+	if err != nil {
+		logger.Log.Errorln("Error closing file:", err)
+	}
+}
+
 func NewJsonStore(filePath string) *JsonStore {
 	return &JsonStore{filePath: filePath}
 }
 
 func (js *JsonStore) Set(key, value string) error {
-	inputFile, err := os.OpenFile(js.filePath, os.O_RDWR|os.O_CREATE, 0644)
+	storeFile, err := os.OpenFile(js.filePath, os.O_RDWR|os.O_CREATE, 0644)
+	defer handleFileClose(storeFile)
 	if err != nil {
 		return fmt.Errorf("error opening file: %v", err)
 	}
 
-	defer func(inputFile *os.File) {
-		err := inputFile.Close()
-		if err != nil {
-			logger.Log.Errorln("Error closing file:", err)
-		}
-	}(inputFile)
-
-	data, err := readData(inputFile, err)
+	data, err := readData(storeFile, err)
 	if err != nil {
 		return err
 	}
@@ -44,20 +45,13 @@ func (js *JsonStore) Set(key, value string) error {
 }
 
 func (js *JsonStore) Get(key string) (string, bool) {
-	inputFile, err := os.Open(js.filePath)
-
+	storeFile, err := os.Open(js.filePath)
+	defer handleFileClose(storeFile)
 	if err != nil {
 		return "", false
 	}
 
-	defer func(inputFile *os.File) {
-		err := inputFile.Close()
-		if err != nil {
-			logger.Log.Errorln("Error closing file:", err)
-		}
-	}(inputFile)
-
-	data, err := readData(inputFile, err)
+	data, err := readData(storeFile, err)
 	if err != nil {
 		return "", false
 	}
@@ -66,19 +60,13 @@ func (js *JsonStore) Get(key string) (string, bool) {
 }
 
 func (js *JsonStore) Delete(key string) error {
-	inputFile, err := os.Open(js.filePath)
+	storeFile, err := os.Open(js.filePath)
+	defer handleFileClose(storeFile)
 	if err != nil {
 		return err
 	}
 
-	defer func(inputFile *os.File) {
-		err := inputFile.Close()
-		if err != nil {
-			logger.Log.Errorln("Error closing file:", err)
-		}
-	}(inputFile)
-
-	data, err := readData(inputFile, err)
+	data, err := readData(storeFile, err)
 	if err != nil {
 		return err
 	}
@@ -93,20 +81,13 @@ func (js *JsonStore) Delete(key string) error {
 }
 
 func (js *JsonStore) Dump() map[string]string {
-	inputFile, err := os.Open(js.filePath)
-
+	storeFile, err := os.Open(js.filePath)
+	defer handleFileClose(storeFile)
 	if err != nil {
 		return nil
 	}
 
-	defer func(inputFile *os.File) {
-		err := inputFile.Close()
-		if err != nil {
-			logger.Log.Errorln("Error closing file:", err)
-		}
-	}(inputFile)
-
-	data, err := readData(inputFile, err)
+	data, err := readData(storeFile, err)
 	if err != nil {
 		return nil
 	}
@@ -136,8 +117,8 @@ func writeData(data map[string]string, filePath string) error {
 	return nil
 }
 
-func readData(inputFile *os.File, err error) (map[string]string, error) {
-	byteValue, _ := io.ReadAll(inputFile)
+func readData(storeFile *os.File, err error) (map[string]string, error) {
+	byteValue, _ := io.ReadAll(storeFile)
 	if len(byteValue) == 0 {
 		byteValue = []byte("{}")
 
