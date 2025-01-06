@@ -13,7 +13,7 @@ import (
 )
 
 func loadRaftLog(dir string, storage *raft.MemoryStorage) error {
-	logFiles, err := filepath.Glob(filepath.Join(dir, "*.logger"))
+	logFiles, err := filepath.Glob(filepath.Join(dir, "*.log"))
 	if err != nil {
 		return err
 	}
@@ -76,4 +76,55 @@ func appendToLogFile(logDir string, entry raftpb.Entry) error {
 
 	logger.Log.Infof("Appended logger entry: %v", logEntry)
 	return nil
+}
+
+func compactLogFile(logDir string, appliedIndex uint64) error {
+	logFile, err := os.OpenFile(logDir+"/node.log", os.O_RDWR, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open logger file for compaction: %v", err)
+	}
+	defer logFile.Close()
+
+	scanner := bufio.NewScanner(logFile)
+	var newLogEntries []raftpb.Entry
+
+	for scanner.Scan() {
+		var logEntry map[string]interface{}
+		if err := json.Unmarshal(scanner.Bytes(), &logEntry); err != nil {
+			return fmt.Errorf("failed to unmarshal logger entry from JSON in file %s: %w", logFile, err)
+		}
+
+		entry := raftpb.Entry{
+			Index: uint64(logEntry["index"].(float64)),                                 // Cast to uint64
+			Term:  uint64(logEntry["term"].(float64)),                                  // Cast to uint64
+			Type:  raftpb.EntryType(raftpb.EntryType_value[logEntry["type"].(string)]), // Convert string back to EntryType
+			Data:  []byte(logEntry["data"].(string)),                                   // Convert data back to bytes
+		}
+		if entry.Index >= appliedIndex {
+			newLogEntries = append(newLogEntries, entry)
+		}
+	}
+
+	if err := logFile.Truncate(0); err != nil {
+		return fmt.Errorf("failed to truncate logger file: %v", err)
+	}
+	if _, err := logFile.Seek(0, 0); err != nil {
+		return fmt.Errorf("failed to seek logger file: %v", err)
+	}
+
+	writer := bufio.NewWriter(logFile)
+	for _, entry := range newLogEntries {
+		err = appendToLogFile(logDir, entry)
+		if err != nil {
+			return fmt.Errorf("failed to encode logger entry: %v", err)
+		}
+	}
+
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("failed to flush buffer: %v", err)
+	}
+
+	logger.Log.Infof("Log file compacted, removed entries before index: %d", appliedIndex)
+	return nil
+
 }

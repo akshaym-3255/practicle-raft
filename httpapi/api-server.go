@@ -77,12 +77,18 @@ func (as *ApiServer) handleGet(w http.ResponseWriter, r *http.Request) {
 
 	// wait for 10 seconds
 	wait := 0
+	waitOver := false
 	for as.RaftNode.CommitIndex < rs.Index {
 		if wait > 10 {
+			waitOver = true
 			break
 		}
 		time.Sleep(1 * time.Second)
 		wait += 1
+	}
+
+	if waitOver {
+		http.Error(w, "Key not found", http.StatusInternalServerError)
 	}
 
 	value, ok := as.RaftNode.KvStore.Get(key)

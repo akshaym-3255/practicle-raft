@@ -4,12 +4,10 @@ import (
 	"akshay-raft/kvstore"
 	"akshay-raft/logger"
 	"akshay-raft/transport"
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -80,7 +78,7 @@ type LogDataEntry struct {
 func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster string, snapshotDir, logDir string, join bool) *RaftNode {
 
 	loggerRaft := logrus.New()
-	loggerRaft.SetLevel(logrus.WarnLevel)
+	loggerRaft.SetLevel(logrus.DebugLevel)
 	raft.SetLogger(loggerRaft)
 	snapshot, err := loadSnapshot(snapshotDir, kvStore)
 	if err != nil {
@@ -158,6 +156,7 @@ func (rn *RaftNode) Run() {
 			return
 		case rd := <-rn.Node.Ready():
 
+			//
 			for _, rs := range rd.ReadStates {
 				rn.ReadState <- rs
 			}
@@ -165,12 +164,14 @@ func (rn *RaftNode) Run() {
 			if err := rn.storage.Append(rd.Entries); err != nil {
 				logger.Log.Fatal(err)
 			}
+
 			rn.Transport.Send(rd.Messages)
+
 			if len(rd.CommittedEntries) > 0 {
-				// to demo readState
-				//if rn.Id == 3 {
-				//	time.Sleep(30 * time.Second)
-				//}
+				//to demo readState
+				if rn.Id == 5 {
+					time.Sleep(30 * time.Second)
+				}
 				rn.CommitIndex = rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
 				rn.maybeTriggerSnapshot(rd.CommittedEntries[len(rd.CommittedEntries)-1].Index)
 				rn.appendToLog(rd.CommittedEntries)
@@ -298,55 +299,4 @@ func (rn *RaftNode) RemoveNode(nodeId uint64) error {
 
 	logger.Log.Infof("Proposed configuration change to remove node %d", nodeId)
 	return nil
-}
-
-func compactLogFile(logDir string, appliedIndex uint64) error {
-	logFile, err := os.OpenFile(logDir+"/node.logger", os.O_RDWR, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open logger file for compaction: %v", err)
-	}
-	defer logFile.Close()
-
-	scanner := bufio.NewScanner(logFile)
-	var newLogEntries []raftpb.Entry
-
-	for scanner.Scan() {
-		var logEntry map[string]interface{}
-		if err := json.Unmarshal(scanner.Bytes(), &logEntry); err != nil {
-			return fmt.Errorf("failed to unmarshal logger entry from JSON in file %s: %w", logFile, err)
-		}
-
-		entry := raftpb.Entry{
-			Index: uint64(logEntry["index"].(float64)),                                 // Cast to uint64
-			Term:  uint64(logEntry["term"].(float64)),                                  // Cast to uint64
-			Type:  raftpb.EntryType(raftpb.EntryType_value[logEntry["type"].(string)]), // Convert string back to EntryType
-			Data:  []byte(logEntry["data"].(string)),                                   // Convert data back to bytes
-		}
-		if entry.Index >= appliedIndex {
-			newLogEntries = append(newLogEntries, entry)
-		}
-	}
-
-	if err := logFile.Truncate(0); err != nil {
-		return fmt.Errorf("failed to truncate logger file: %v", err)
-	}
-	if _, err := logFile.Seek(0, 0); err != nil {
-		return fmt.Errorf("failed to seek logger file: %v", err)
-	}
-
-	writer := bufio.NewWriter(logFile)
-	for _, entry := range newLogEntries {
-		err = appendToLogFile(logDir, entry)
-		if err != nil {
-			return fmt.Errorf("failed to encode logger entry: %v", err)
-		}
-	}
-
-	if err := writer.Flush(); err != nil {
-		return fmt.Errorf("failed to flush buffer: %v", err)
-	}
-
-	logger.Log.Infof("Log file compacted, removed entries before index: %d", appliedIndex)
-	return nil
-
 }
