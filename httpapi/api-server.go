@@ -17,6 +17,11 @@ type ApiServer struct {
 	RaftNode *raftnode.RaftNode
 }
 
+type createKeyValueRequest struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
 func stripHTTPPrefix(url string) string {
 	return strings.TrimPrefix(url, "http://")
 }
@@ -24,7 +29,7 @@ func stripHTTPPrefix(url string) string {
 func (as *ApiServer) ServeHTTP(clientListenURL string) {
 	r := mux.NewRouter()
 	r.HandleFunc("/kv/{key}", as.handleGet).Methods("GET")
-	r.HandleFunc("/kv/{key}", as.handleSet).Methods("PUT")
+	r.HandleFunc("/kv", as.handleSet).Methods("PUT")
 	r.HandleFunc("/kv/{key}", as.handleDelete).Methods("DELETE")
 	r.HandleFunc("/add-node", as.addNodeHandler).Methods("POST")
 	r.HandleFunc("/add-node", as.removeNodeHandler).Methods("DELETE")
@@ -123,18 +128,16 @@ func (as *ApiServer) handleGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (as *ApiServer) handleSet(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	key := vars["key"]
-	var value map[string]string
-	if err := json.NewDecoder(r.Body).Decode(&value); err != nil {
+	var keyValue createKeyValueRequest
+	if err := json.NewDecoder(r.Body).Decode(&keyValue); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	logDataEntry := raftnode.LogDataEntry{
 		Operation: raftnode.OperationAdd,
-		Key:       key,
-		Value:     value[key],
+		Key:       keyValue.Key,
+		Value:     keyValue.Value,
 	}
 
 	data, err := json.Marshal(logDataEntry)
