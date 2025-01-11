@@ -52,9 +52,9 @@ type RaftNode struct {
 	// used for exposing APIs and interacting with clients.
 	httpServer *http.Server
 
-	// snapshotDir is the directory where snapshots of the Raft state machine
+	// dataDir is the directory where snapshots of the Raft state machine
 	// are stored for recovery purposes.
-	snapshotDir string
+	dataDir string
 
 	// logDir is the directory where Raft logger files
 	// are stored for durability and replaying state.
@@ -92,12 +92,12 @@ type LogDataEntry struct {
 	Value     string        `json:"value"`
 }
 
-func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster string, snapshotDir, logDir string, join bool) *RaftNode {
+func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster string, dataDir, logDir string, join bool) *RaftNode {
 
 	loggerRaft := logrus.New()
 	loggerRaft.SetLevel(logrus.DebugLevel)
 	raft.SetLogger(loggerRaft)
-	snapshot, err := loadSnapshot(snapshotDir, kvStore)
+	snapshot, err := loadSnapshot(dataDir, kvStore)
 	if err != nil {
 		logger.Log.Fatalf("Error loading snapshot: %v", err)
 	}
@@ -155,7 +155,7 @@ func NewRaftNode(id uint64, kvStore *kvstore.KeyValueStore, initialCluster strin
 		KvStore:           *kvStore,
 		stopc:             make(chan struct{}),
 		ReadState:         make(chan raft.ReadState),
-		snapshotDir:       snapshotDir,
+		dataDir:           dataDir,
 		logDir:            logDir,
 		lastSnapshotIndex: lastSnapshotIndex,
 	}
@@ -256,7 +256,7 @@ func (rn *RaftNode) createSnapshot(appliedIndex uint64) {
 		Data: kvStateSnapData,
 	}
 
-	if err := saveSnapshot(rn.snapshotDir, snapshot); err != nil {
+	if err := saveSnapshot(rn.dataDir, snapshot); err != nil {
 		logger.Log.Fatalf("Failed to save snapshot: %v", err)
 	}
 	if err := rn.storage.Compact(appliedIndex); err != nil {

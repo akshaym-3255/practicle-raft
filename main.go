@@ -14,16 +14,16 @@ func main() {
 	peerListenURLs := flag.String("listen-peer-urls", "http://localhost:2380", "peer listen URL")
 	initialCluster := flag.String("initial-cluster", "", "initial cluster configuration")
 	join := flag.Bool("join", false, "join an existing cluster")
-
-	snapshotDir := flag.String("snapshot-dir", "", "snapshot dir")
-	logDir := snapshotDir
+	dataDir := flag.String("data-dir", "", "snapshot dir")
+	keyValueStorePath := flag.String("key-store-dir", "", "key store path")
+	logDir := dataDir
 	flag.Parse()
 
-	filePath := "/Users/akshay.mohite/open-source/akshay-raft/persistent-store/data-node" + strconv.FormatUint(*id, 10) + ".json"
-	jsonStore := kvstore.NewJsonStore(filePath)
+	keyValueFile := *keyValueStorePath + "/data-node" + strconv.FormatUint(*id, 10) + ".json"
+	jsonStore := kvstore.NewJsonStore(keyValueFile)
 	kvStore := kvstore.NewKeyValueStore(jsonStore)
 
-	rn := raftnode.NewRaftNode(*id, kvStore, *initialCluster, *snapshotDir, *logDir, *join)
+	rn := raftnode.NewRaftNode(*id, kvStore, *initialCluster, *dataDir, *logDir, *join)
 
 	apiServer := httpapi.ApiServer{rn}
 	peerServer := httpapi.PeerServer{rn}
