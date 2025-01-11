@@ -10,8 +10,8 @@ import (
 
 func main() {
 	id := flag.Uint64("id", 1, "node ID")
-	clientListenURLs := flag.String("listen-client-urls", "http://localhost:2379", "client listen URL")
-	peerListenURLs := flag.String("listen-peer-urls", "http://localhost:2380", "peer listen URL")
+	clientListenURL := flag.String("listen-client-url", "http://localhost:2379", "client listen URL")
+	peerListenURL := flag.String("listen-peer-url", "http://localhost:2380", "peer listen URL")
 	initialCluster := flag.String("initial-cluster", "", "initial cluster configuration")
 	join := flag.Bool("join", false, "join an existing cluster")
 	dataDir := flag.String("data-dir", "", "snapshot dir")
@@ -27,8 +27,8 @@ func main() {
 
 	apiServer := httpapi.ApiServer{rn}
 	peerServer := httpapi.PeerServer{rn}
-	go apiServer.ServeHTTP(*clientListenURLs)
-	go peerServer.ServeHTTP(*peerListenURLs)
+	go apiServer.ServeHTTP(*clientListenURL)
+	go peerServer.ServeHTTP(*peerListenURL)
 	go rn.Run()
 	select {}
 }
