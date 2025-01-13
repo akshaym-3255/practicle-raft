@@ -2,6 +2,7 @@
 
 ```
 git clone https://github.com/akshaym-3255/practicle-raft.git
+cd practicle-raft
 make build 
 make clean 
 make create-dirs
