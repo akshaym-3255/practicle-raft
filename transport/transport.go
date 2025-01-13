@@ -84,6 +84,7 @@ func (t *HttpTransport) SendMessage(msg raftpb.Message) {
 		logger.Log.Warnf("failed to find peer URL for node %d", msg.To)
 		return
 	}
+	logger.Log.Debugf("sending message of type from %d to %d of type %s", msg.From, msg.To, msg.Type)
 	url := fmt.Sprintf("%s/raft", peerURL)
 	resp, err := t.client.Post(url, "application/octet-stream", bytes.NewReader(data))
 	if err != nil {
