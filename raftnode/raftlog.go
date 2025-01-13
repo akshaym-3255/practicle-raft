@@ -1,10 +1,10 @@
 package raftnode
 
 import (
-	"akshay-raft/logger"
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/akshaym-3255/practicle-raft/logger"
 	"os"
 	"path/filepath"
 

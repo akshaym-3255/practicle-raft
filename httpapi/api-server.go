@@ -1,11 +1,11 @@
 package httpapi
 
 import (
-	"akshay-raft/logger"
-	"akshay-raft/raftnode"
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/akshaym-3255/practicle-raft/logger"
+	"github.com/akshaym-3255/practicle-raft/raftnode"
 	"github.com/gorilla/mux"
 	"net/http"
 	"strconv"

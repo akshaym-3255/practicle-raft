@@ -1,4 +1,4 @@
-module akshay-raft
+module github.com/akshaym-3255/practicle-raft
 
 go 1.22
 

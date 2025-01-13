@@ -1,12 +1,12 @@
 package raftnode
 
 import (
-	"akshay-raft/kvstore"
-	"akshay-raft/logger"
-	"akshay-raft/transport"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/akshaym-3255/practicle-raft/kvstore"
+	"github.com/akshaym-3255/practicle-raft/logger"
+	"github.com/akshaym-3255/practicle-raft/transport"
 	"net/http"
 	"strings"
 	"time"

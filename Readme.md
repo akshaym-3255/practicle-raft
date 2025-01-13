@@ -1,12 +1,29 @@
 ## how to run it locally
 
-```
+```shell
 git clone https://github.com/akshaym-3255/practicle-raft.git
 cd practicle-raft
-make build 
-make clean 
+```
+### install dependencies
+```shell
+make install
+```
+### create necessary directories
+```shell
 make create-dirs
-make member1 
-make member2 
-make member3 
+```
+
+### start a 3 member cluster
+```shell
+make run-cluster
+```
+
+### stop a cluster 
+```shell
+make stop-cluster
+```
+
+### cleanup 
+```shell
+make clean
 ```

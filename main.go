@@ -1,10 +1,10 @@
 package main
 
 import (
-	"akshay-raft/httpapi"
-	"akshay-raft/kvstore"
-	"akshay-raft/raftnode"
 	"flag"
+	"github.com/akshaym-3255/practicle-raft/httpapi"
+	"github.com/akshaym-3255/practicle-raft/kvstore"
+	"github.com/akshaym-3255/practicle-raft/raftnode"
 	"strconv"
 )
 

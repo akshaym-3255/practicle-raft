@@ -1,7 +1,7 @@
 package kvstore
 
 import (
-	"akshay-raft/logger"
+	"github.com/akshaym-3255/practicle-raft/logger"
 )
 
 type KeyValueStore struct {

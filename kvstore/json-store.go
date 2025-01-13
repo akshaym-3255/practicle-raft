@@ -1,9 +1,9 @@
 package kvstore
 
 import (
-	"akshay-raft/logger"
 	"encoding/json"
 	"fmt"
+	"github.com/akshaym-3255/practicle-raft/logger"
 	"io"
 	"os"
 )

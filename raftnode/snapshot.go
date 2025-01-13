@@ -1,10 +1,10 @@
 package raftnode
 
 import (
-	"akshay-raft/kvstore"
-	"akshay-raft/logger"
 	"encoding/json"
 	"fmt"
+	"github.com/akshaym-3255/practicle-raft/kvstore"
+	"github.com/akshaym-3255/practicle-raft/logger"
 	"os"
 	"path/filepath"
 
