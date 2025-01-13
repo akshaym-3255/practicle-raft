@@ -90,7 +90,7 @@ func compactLogFile(logDir string, appliedIndex uint64) error {
 	for scanner.Scan() {
 		var logEntry map[string]interface{}
 		if err := json.Unmarshal(scanner.Bytes(), &logEntry); err != nil {
-			return fmt.Errorf("failed to unmarshal logger entry from JSON in file %s: %w", logFile, err)
+			return fmt.Errorf("failed to unmarshal logger entry from JSON in file %s: %w", logFile.Name(), err)
 		}
 
 		entry := raftpb.Entry{
