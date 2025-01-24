@@ -34,7 +34,7 @@ member3:
 	go run .  -id 3  -listen-client-url http://localhost:2383  -listen-peer-url http://localhost:2384  -initial-cluster 1=http://localhost:2380,2=http://localhost:2382,3=http://localhost:2384  --data-dir ./data/member3   --key-store-dir ./persistent-store/ > applogs/member3-app.log 2>&1
 
 member4:
-	go run .  -id 4  -listen-client-url http://localhost:2385  -listen-peer-url http://localhost:2386  -initial-cluster 1=http://localhost:2380,2=http://localhost:2382,3=http://localhost:2384,4=http://localhost:2386  --data-dir ./data/member4 -join true --key-store-dir ./persistent-store/ > applogs/member4-app.log 2>&1
+	go run .  -id 4  -listen-client-url http://localhost:2385  -listen-peer-url http://localhost:2386  -initial-cluster 1=http://localhost:2380,2=http://localhost:2382,3=http://localhost:2384,4=http://localhost:2386  --data-dir ./data/member4   --key-store-dir ./persistent-store/ --join=true > applogs/member4-app.log 2>&1
 
 member5:
-	go run .  -id 5  -listen-client-url http://localhost:2387  -listen-peer-url http://localhost:2388  -initial-cluster 1=http://localhost:2380,2=http://localhost:2382,3=http://localhost:2384,4=http://localhost:2386,5=http://localhost:2388  --data-dir ./data/member5 -join true --key-store-dir ./persistent-store/ > applogs/member4-app.log 2>&1
+	go run .  -id 5  -listen-client-url http://localhost:2387  -listen-peer-url http://localhost:2388  -initial-cluster 1=http://localhost:2380,2=http://localhost:2382,3=http://localhost:2384,4=http://localhost:2386,5=http://localhost:2388  --data-dir ./data/member5  --key-store-dir ./persistent-store/ --join=true > applogs/member4-app.log 2>&1

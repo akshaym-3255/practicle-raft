@@ -23,17 +23,17 @@ func (kv *KeyValueStore) Get(key string) (string, bool) {
 	return kv.PersistentStore.Get(key)
 }
 
+func (kv *KeyValueStore) Delete(key string) {
+	err := kv.PersistentStore.Delete(key)
+	if err != nil {
+		logger.Log.Errorln("Unable to delete key please check ")
+	}
+}
+
 func (kv *KeyValueStore) Dump() map[string]string {
 	return kv.PersistentStore.Dump()
 }
 
 func (kv *KeyValueStore) Restore(data map[string]string) error {
 	return kv.PersistentStore.Restore(data)
-}
-
-func (kv *KeyValueStore) Delete(key string) {
-	err := kv.PersistentStore.Delete(key)
-	if err != nil {
-		logger.Log.Errorln("Unable to delete key please check ")
-	}
 }
