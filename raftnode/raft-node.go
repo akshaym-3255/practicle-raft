@@ -181,11 +181,14 @@ func (rn *RaftNode) Run() {
 			rn.Transport.Send(rd.Messages)
 
 			if len(rd.CommittedEntries) > 0 {
-				rn.CommitIndex = rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
-				rn.maybeTriggerSnapshot(rd.CommittedEntries[len(rd.CommittedEntries)-1].Index)
 				rn.appendToLog(rd.CommittedEntries)
 			}
 			rn.processCommitedEntries(rd)
+
+			if len(rd.CommittedEntries) > 0 {
+				rn.CommitIndex = rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
+				rn.maybeTriggerSnapshot(rd.CommittedEntries[len(rd.CommittedEntries)-1].Index)
+			}
 
 			rn.Node.Advance()
 		case msg := <-rn.Transport.RecvC:

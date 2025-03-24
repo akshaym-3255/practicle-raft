@@ -99,7 +99,7 @@ func compactLogFile(logDir string, appliedIndex uint64) error {
 			Type:  raftpb.EntryType(raftpb.EntryType_value[logEntry["type"].(string)]),
 			Data:  []byte(logEntry["data"].(string)),
 		}
-		if entry.Index >= appliedIndex {
+		if entry.Index > appliedIndex {
 			newLogEntries = append(newLogEntries, entry)
 		}
 	}
