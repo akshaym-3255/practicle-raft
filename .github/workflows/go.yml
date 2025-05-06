@@ -16,9 +16,9 @@ on:
           - sit
           - prod
   push:
-    branches: [ "main" ]
+    branches: [ "main", "test" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "test" ]
 
 jobs:
 
