@@ -15,25 +15,26 @@ on:
           - dev
           - sit
           - prod
-  push:
-    branches: [ "main", "test" ]
-  pull_request:
-    branches: [ "main", "test" ]
 
 jobs:
-
-  build:
+  print-env:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - name: Print selected environment
+        run: echo "Running in ${{ github.event.inputs.RUN_ENVIRONMENT }} environment"
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.22'
+  # build:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - uses: actions/checkout@v4
 
-    - name: Build
-      run: go build -v ./...
+  #   - name: Set up Go
+  #     uses: actions/setup-go@v4
+  #     with:
+  #       go-version: '1.22'
 
-    - name: Test
-      run: go test -v ./...
+  #   - name: Build
+  #     run: go build -v ./...
+
+  #   - name: Test
+  #     run: go test -v ./...
