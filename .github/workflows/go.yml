@@ -4,6 +4,17 @@
 name: Go
 
 on:
+  workflow_dispatch:
+    inputs:
+      RUN_ENVIRONMENT:
+        description: "Choose the environment to run the workflow"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - sit
+          - prod
   push:
     branches: [ "main" ]
   pull_request:
